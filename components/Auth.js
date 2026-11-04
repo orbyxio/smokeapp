@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 // ✏️ Troque pelo nome da sua empresa (aparece no rodapé da tela de login)
-const COMPANY = 'Nome da sua empresa';
+const COMPANY = 'Smoke Euphoria';
 
 // Mensagem que "digita" sozinha. O texto completo reserva o espaço
 // (invisível) para a tela não pular enquanto escreve.

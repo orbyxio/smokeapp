@@ -39,6 +39,7 @@ html {
 
 body {
   margin: 0;
+  min-height: 100vh;
   min-height: 100dvh;
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-size: 16px;
@@ -366,17 +367,179 @@ a.btn.ghost {
 
 /* ---------- Login ---------- */
 .login {
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh; /* fallback p/ celulares sem suporte a dvh */
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  max-width: 440px;
-  margin: 0 auto;
-  padding: 24px 18px calc(24px + var(--safe-b));
+  align-items: center;
+  padding: calc(30px + var(--safe-t)) 20px calc(22px + var(--safe-b));
 }
-.login-top {
+.login > :not(.orb) {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 440px;
+}
+.login-greet {
   text-align: center;
-  margin-bottom: 8px;
+  padding-top: 4px;
+}
+.pillrole {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lilac-ink);
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  animation: pop 0.6s var(--ease) both;
+}
+.pillrole::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--grad);
+  animation: pulse 1.8s ease-in-out infinite;
+}
+/* Mensagem que "digita" sozinha: o texto completo fica invisível só para
+   reservar o espaço e a tela não pular enquanto escreve */
+.tw {
+  position: relative;
+  margin: 18px 0 0;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -0.03em;
+  text-align: center;
+}
+.tw-full {
+  visibility: hidden;
+}
+.tw-live {
+  position: absolute;
+  inset: 0;
+}
+.greet-text {
+  background: var(--grad);
+  background-size: 200% 200%;
+  animation: shine 8s ease infinite;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.caret {
+  display: inline-block;
+  width: 3px;
+  height: 0.95em;
+  margin-left: 3px;
+  vertical-align: -0.1em;
+  border-radius: 2px;
+  background: var(--violet);
+  animation: blink 1s steps(2) infinite;
+}
+.login-mid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 22px 0;
+}
+.login-title {
+  margin: 0 0 2px;
+  font-size: 22px;
+}
+.login-foot {
+  text-align: center;
+  padding-top: 14px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.login-foot::before {
+  content: '';
+  display: block;
+  width: 44px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 99px;
+  background: var(--grad);
+}
+.login-foot b {
+  display: block;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(42px);
+  opacity: 0.55;
+  pointer-events: none;
+  animation: orb 14s ease-in-out infinite alternate;
+}
+.orb.o1 {
+  top: -70px;
+  right: -90px;
+  width: 270px;
+  height: 270px;
+  background: radial-gradient(circle, #ff3d8b, transparent 70%);
+}
+.orb.o2 {
+  bottom: -100px;
+  left: -110px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, #7a3cff, transparent 70%);
+  animation-delay: -6s;
+}
+
+/* Tela de boas-vindas logo depois de entrar */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: 24px;
+  text-align: center;
+  background:
+    radial-gradient(60% 45% at 50% 28%, rgba(255, 61, 139, 0.34), transparent 70%),
+    radial-gradient(60% 50% at 85% 92%, rgba(122, 60, 255, 0.34), transparent 70%),
+    var(--bg);
+  animation: fade 0.35s both, splashOut 0.5s 1.9s forwards;
+}
+.splash h2 {
+  margin: 8px 0 2px;
+  font-size: 30px;
+}
+.loadbar {
+  width: 170px;
+  height: 5px;
+  margin: 18px auto 0;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--lilac);
+}
+.loadbar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--grad);
+  animation: load 1.1s ease-in-out infinite;
 }
 .logo {
   display: grid;
@@ -401,6 +564,11 @@ a.btn.ghost {
 }
 .login-card {
   padding: 20px;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(#fff, #fff) padding-box,
+    var(--grad) border-box;
+  box-shadow: 0 26px 50px -22px rgba(162, 60, 255, 0.55);
 }
 .pw {
   position: relative;
@@ -424,6 +592,7 @@ a.btn.ghost {
   animation: shake 0.4s;
 }
 .boot {
+  min-height: 60vh;
   min-height: 60dvh;
   display: grid;
   place-items: center;
@@ -784,6 +953,24 @@ a.btn.ghost {
 }
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.5); opacity: 0.55; }
+}
+@keyframes orb {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to { transform: translate3d(-30px, 40px, 0) scale(1.2); }
+}
+@keyframes load {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(270%); }
+}
+@keyframes splashOut {
+  to { opacity: 0; visibility: hidden; }
 }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }

@@ -11,19 +11,29 @@
   --muted: #6b6580;
   --card: rgba(255, 255, 255, 0.78);
   --line: rgba(20, 16, 31, 0.09);
-  --pink: #ff3d8b;
-  --violet: #7a3cff;
-  --indigo: #5b4bff;
+  /* Paleta da logo Smoke Euphoria */
+  --cyan: #1a9bff;
+  --violet: #8f3bff;
+  --magenta: #ff2fd0;
+  --orange: #ff8a1f;
+  --yellow: #ffd21f;
+  --gold: #e6a919;
+  --pink: var(--magenta);
   --lilac: #ece6ff;
   --lilac-ink: #3b1d99;
   --ok: #0f9d6b;
   --warn: #c77700;
   --bad: #d4143c;
-  --grad: linear-gradient(135deg, #ff3d8b 0%, #a23cff 55%, #5b4bff 100%);
+  /* botões e fundos com texto branco */
+  --grad: linear-gradient(135deg, #1a9bff 0%, #8f3bff 48%, #ff2fd0 100%);
+  /* títulos em degradê (sem o amarelo, que some no fundo claro) */
+  --grad-text: linear-gradient(100deg, #1a9bff 0%, #8f3bff 34%, #ff2fd0 66%, #ff8a1f 100%);
+  /* detalhes decorativos: espectro completo da logo */
+  --grad-full: linear-gradient(110deg, #1a9bff 0%, #8f3bff 28%, #ff2fd0 54%, #ff8a1f 80%, #ffd21f 100%);
   --r: 22px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
-  --shadow: 0 14px 34px -14px rgba(122, 60, 255, 0.32), 0 2px 6px rgba(20, 16, 31, 0.05);
+  --shadow: 0 14px 34px -14px rgba(143, 59, 255, 0.32), 0 2px 6px rgba(20, 16, 31, 0.05);
   --ease: cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
@@ -58,10 +68,10 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38% 32% at 18% 14%, rgba(255, 61, 139, 0.26), transparent 70%),
-    radial-gradient(34% 30% at 86% 22%, rgba(122, 60, 255, 0.24), transparent 70%),
-    radial-gradient(40% 34% at 62% 92%, rgba(255, 140, 200, 0.24), transparent 70%),
-    radial-gradient(30% 26% at 6% 80%, rgba(91, 75, 255, 0.18), transparent 70%);
+    radial-gradient(38% 32% at 18% 14%, rgba(26, 155, 255, 0.26), transparent 70%),
+    radial-gradient(34% 30% at 86% 22%, rgba(255, 47, 208, 0.22), transparent 70%),
+    radial-gradient(40% 34% at 62% 92%, rgba(255, 138, 31, 0.22), transparent 70%),
+    radial-gradient(30% 26% at 6% 80%, rgba(143, 59, 255, 0.2), transparent 70%);
   animation: drift 24s ease-in-out infinite alternate;
   will-change: transform;
 }
@@ -133,7 +143,7 @@ select:focus,
 textarea:focus {
   border-color: var(--violet);
   background: #fff;
-  box-shadow: 0 0 0 4px rgba(122, 60, 255, 0.16);
+  box-shadow: 0 0 0 4px rgba(143, 59, 255, 0.16);
 }
 select {
   appearance: none;
@@ -188,12 +198,17 @@ a.btn.ghost {
 }
 
 /* CTA principal: gradiente rosa → roxo que "respira" */
+.cta,
+.cartbar button,
+.nav button.on {
+  text-shadow: 0 1px 2px rgba(20, 16, 31, 0.3);
+}
 .cta {
   width: 100%;
   background: var(--grad);
   background-size: 220% 220%;
   animation: shine 7s ease infinite;
-  box-shadow: 0 16px 32px -12px rgba(162, 60, 255, 0.65);
+  box-shadow: 0 16px 32px -12px rgba(190, 50, 240, 0.65);
 }
 
 @media (hover: hover) {
@@ -271,7 +286,7 @@ a.btn.ghost {
   color: #fff;
   font-weight: 800;
   background: var(--grad);
-  box-shadow: 0 8px 18px -8px rgba(162, 60, 255, 0.7);
+  box-shadow: 0 8px 18px -8px rgba(190, 50, 240, 0.7);
   text-transform: uppercase;
 }
 
@@ -406,7 +421,7 @@ a.btn.ghost {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--grad);
+  background: var(--grad-full);
   animation: pulse 1.8s ease-in-out infinite;
 }
 /* Mensagem que "digita" sozinha: o texto completo fica invisível só para
@@ -428,7 +443,7 @@ a.btn.ghost {
   inset: 0;
 }
 .greet-text {
-  background: var(--grad);
+  background: var(--grad-text);
   background-size: 200% 200%;
   animation: shine 8s ease infinite;
   -webkit-background-clip: text;
@@ -472,7 +487,7 @@ a.btn.ghost {
   height: 4px;
   margin: 0 auto 12px;
   border-radius: 99px;
-  background: var(--grad);
+  background: var(--grad-full);
 }
 .login-foot b {
   display: block;
@@ -494,14 +509,14 @@ a.btn.ghost {
   right: -90px;
   width: 270px;
   height: 270px;
-  background: radial-gradient(circle, #ff3d8b, transparent 70%);
+  background: radial-gradient(circle, #ff2fd0, transparent 70%);
 }
 .orb.o2 {
   bottom: -100px;
   left: -110px;
   width: 320px;
   height: 320px;
-  background: radial-gradient(circle, #7a3cff, transparent 70%);
+  background: radial-gradient(circle, #8f3bff, transparent 70%);
   animation-delay: -6s;
 }
 
@@ -516,8 +531,8 @@ a.btn.ghost {
   padding: 24px;
   text-align: center;
   background:
-    radial-gradient(60% 45% at 50% 28%, rgba(255, 61, 139, 0.34), transparent 70%),
-    radial-gradient(60% 50% at 85% 92%, rgba(122, 60, 255, 0.34), transparent 70%),
+    radial-gradient(60% 45% at 50% 28%, rgba(255, 47, 208, 0.34), transparent 70%),
+    radial-gradient(60% 50% at 85% 92%, rgba(143, 59, 255, 0.34), transparent 70%),
     var(--bg);
   animation: fade 0.35s both, splashOut 0.5s 1.9s forwards;
 }
@@ -538,7 +553,7 @@ a.btn.ghost {
   width: 40%;
   height: 100%;
   border-radius: 99px;
-  background: var(--grad);
+  background: var(--grad-full);
   animation: load 1.1s ease-in-out infinite;
 }
 .logo {
@@ -553,7 +568,7 @@ a.btn.ghost {
   background: var(--grad);
   background-size: 220% 220%;
   animation: shine 7s ease infinite, float 4.5s ease-in-out infinite;
-  box-shadow: 0 22px 40px -14px rgba(162, 60, 255, 0.75);
+  box-shadow: 0 22px 40px -14px rgba(190, 50, 240, 0.75);
 }
 .login h1 {
   background: var(--grad);
@@ -567,8 +582,8 @@ a.btn.ghost {
   border: 1.5px solid transparent;
   background:
     linear-gradient(#fff, #fff) padding-box,
-    var(--grad) border-box;
-  box-shadow: 0 26px 50px -22px rgba(162, 60, 255, 0.55);
+    var(--grad-full) border-box;
+  box-shadow: 0 26px 50px -22px rgba(190, 50, 240, 0.55);
 }
 .pw {
   position: relative;
@@ -613,7 +628,7 @@ a.btn.ghost {
 }
 .hero h1 {
   font-size: 40px;
-  background: var(--grad);
+  background: var(--grad-text);
   background-size: 200% 200%;
   animation: shine 8s ease infinite;
   -webkit-background-clip: text;
@@ -770,6 +785,7 @@ a.btn.ghost {
   font-weight: 600;
 }
 .cartbar b {
+  color: var(--yellow);
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }
@@ -866,7 +882,7 @@ a.btn.ghost {
   color: var(--lilac-ink);
   background: var(--lilac);
   border-color: var(--violet);
-  box-shadow: 0 10px 22px -12px rgba(122, 60, 255, 0.8);
+  box-shadow: 0 10px 22px -12px rgba(143, 59, 255, 0.8);
 }
 
 /* Tela de pedido recebido */
@@ -884,7 +900,7 @@ a.btn.ghost {
   color: #fff;
   font-size: 44px;
   background: var(--grad);
-  box-shadow: 0 22px 44px -12px rgba(162, 60, 255, 0.7);
+  box-shadow: 0 22px 44px -12px rgba(190, 50, 240, 0.7);
   animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.3, 1) both;
 }
 .pixbox {

@@ -347,31 +347,238 @@ function Estoque() {
   );
 }
 
+const KIND = { entrada: 'Entrada', saida: 'Saída' };
+const STATUS = { recebido: 'Recebido', a_receber: 'A receber' };
+const dt = (v) => { try { return v ? new Date(v).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : ''; } catch { return ''; } };
+
+// Escolha entre duas opções (botões)
+function Choice({ value, onChange, options }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      {Object.entries(options).map(([k, label]) => (
+        <button key={k} type="button" className={value === k ? '' : 'ghost'} onClick={() => onChange(k)}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
+function CashRow({ r, reload }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ kind: r.kind, description: r.description || '', amount: String(r.amount), status: r.status });
+  const [busy, setBusy] = useState(false);
+  const out = r.kind === 'saida';
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.from('cash_entries')
+      .update({ kind: f.kind, description: f.description, amount: Number(f.amount), status: f.status }).eq('id', r.id);
+    setBusy(false);
+    if (error) return alert('Não consegui salvar: ' + error.message);
+    setEdit(false);
+    reload();
+  }
+  async function remove() {
+    if (!confirm(`Apagar este lançamento?\n\n${r.description || ''} · ${brl(r.amount)}\n\nNão dá para desfazer.`)) return;
+    const { error } = await supabase.from('cash_entries').delete().eq('id', r.id);
+    if (error) return alert('Não consegui apagar: ' + error.message);
+    reload();
+  }
+
+  if (edit) {
+    return (
+      <form onSubmit={save} style={{ ...line, padding: '12px 0' }}>
+        <span style={lab}>Tipo</span>
+        <Choice value={f.kind} onChange={(kind) => setF({ ...f, kind })} options={KIND} />
+        <span style={lab}>Descrição</span>
+        <input value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} required />
+        <span style={lab}>Valor (R$)</span>
+        <input type="number" step="0.01" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} required />
+        <span style={lab}>Situação</span>
+        <Choice value={f.status} onChange={(status) => setF({ ...f, status })} options={STATUS} />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button disabled={busy}>{busy ? 'Salvando...' : 'Salvar'}</button>
+          <button type="button" className="ghost" onClick={() => setEdit(false)}>Cancelar</button>
+        </div>
+      </form>
+    );
+  }
+  return (
+    <div style={{ ...line, padding: '12px 0' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+        <span style={{ minWidth: 0 }}>
+          <b>{r.description || 'Sem descrição'}</b><br />
+          <span className="muted">{KIND[r.kind] || r.kind} · {dt(r.created_at)} {dt(r.created_at) ? '· ' : ''}</span>
+          <span className="tag">{STATUS[r.status] || r.status}</span>
+          {r.order_id ? <span className="muted"> · pedido #{r.order_id}</span> : null}
+        </span>
+        <b style={{ whiteSpace: 'nowrap', color: out ? '#d6204b' : undefined }}>{out ? '- ' : ''}{brl(r.amount)}</b>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button type="button" className="ghost" onClick={() => setEdit(true)}>Editar</button>
+        <button type="button" className="ghost" onClick={remove} style={{ color: '#d6204b' }}>Apagar</button>
+        {r.status === 'a_receber' && r.kind === 'entrada' && (
+          <button type="button" onClick={async () => {
+            const { error } = await supabase.from('cash_entries').update({ status: 'recebido' }).eq('id', r.id);
+            if (error) alert(error.message);
+            reload();
+          }}>Marcar recebido</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Caixa() {
   const [rows, setRows] = useState([]);
-  const [s, setS] = useState({ description: '', amount: '' });
-  const load = () => supabase.from('cash_entries').select('*').order('id', { ascending: false }).limit(100).then(({ data }) => setRows(data || []));
+  const empty = { kind: 'saida', description: '', amount: '', status: 'recebido' };
+  const [s, setS] = useState(empty);
+  const [filter, setFilter] = useState('todos');
+  const [busy, setBusy] = useState(false);
+  const load = () => supabase.from('cash_entries').select('*').order('id', { ascending: false }).limit(200).then(({ data }) => setRows(data || []));
   useEffect(() => { load(); }, []);
   const sum = (f) => rows.filter(f).reduce((t, r) => t + Number(r.amount), 0);
   const received = sum((r) => r.kind === 'entrada' && r.status === 'recebido') - sum((r) => r.kind === 'saida' && r.status === 'recebido');
   const pending = sum((r) => r.kind === 'entrada' && r.status === 'a_receber');
-  async function out(e) {
+
+  async function add(e) {
     e.preventDefault();
-    await supabase.from('cash_entries').insert({ kind: 'saida', amount: Number(s.amount), description: s.description, status: 'recebido' });
-    setS({ description: '', amount: '' }); load();
+    setBusy(true);
+    const { error } = await supabase.from('cash_entries')
+      .insert({ kind: s.kind, amount: Number(s.amount), description: s.description, status: s.status });
+    setBusy(false);
+    if (error) return alert(error.message);
+    setS(empty);
+    load();
   }
+
+  const FILTERS = { todos: 'Todos', entrada: 'Entradas', saida: 'Saídas', a_receber: 'A receber' };
+  const shown = rows.filter((r) =>
+    filter === 'todos' ? true : filter === 'a_receber' ? r.status === 'a_receber' : r.kind === filter);
+
   return (
     <>
       <div className="card row"><span>Em caixa: <b>{brl(received)}</b></span><span>A receber: <b>{brl(pending)}</b></span></div>
-      <form className="card" onSubmit={out}>
-        <b>Registrar saída</b>
-        <input placeholder="Descrição" value={s.description} onChange={(e) => setS({ ...s, description: e.target.value })} required />
-        <input type="number" step="0.01" placeholder="Valor" value={s.amount} onChange={(e) => setS({ ...s, amount: e.target.value })} required />
-        <button>Registrar</button>
+
+      <form className="card" onSubmit={add}>
+        <b style={{ fontSize: 17 }}>Novo lançamento</b>
+        <p className="muted" style={help}>Use para registrar qualquer dinheiro que entrou ou saiu, mesmo fora dos pedidos do site.</p>
+        <span style={lab}>Tipo</span>
+        <Choice value={s.kind} onChange={(kind) => setS({ ...s, kind })} options={KIND} />
+        <span style={lab}>Descrição</span>
+        <input placeholder="Ex.: Venda direta, gasolina, acerto" value={s.description} onChange={(e) => setS({ ...s, description: e.target.value })} required />
+        <span style={lab}>Valor (R$)</span>
+        <input type="number" step="0.01" placeholder="Ex.: 50.00" value={s.amount} onChange={(e) => setS({ ...s, amount: e.target.value })} required />
+        <span style={lab}>Situação</span>
+        <Choice value={s.status} onChange={(status) => setS({ ...s, status })} options={STATUS} />
+        <button disabled={busy} style={{ marginTop: 12 }}>{busy ? 'Salvando...' : 'Registrar'}</button>
       </form>
-      <div className="card">{rows.map((r) => (
-        <div className="row" key={r.id}><span>{r.description} <span className="tag">{r.status}</span></span><b>{r.kind === 'saida' ? '-' : ''}{brl(r.amount)}</b></div>
-      ))}</div>
+
+      <div className="card">
+        <b style={{ fontSize: 17 }}>Lançamentos</b>
+        <p className="muted" style={help}>Os pedidos entram aqui sozinhos. Toque em Editar para corrigir qualquer um, ou em Apagar para remover.</p>
+        <Choice value={filter} onChange={setFilter} options={FILTERS} />
+        {shown.length === 0 && <p className="muted">Nada por aqui.</p>}
+        {shown.map((r) => <CashRow key={r.id + ':' + r.amount + ':' + r.status + ':' + r.kind + ':' + r.description} r={r} reload={load} />)}
+      </div>
+    </>
+  );
+}
+
+/* ---------- Locais de entrega e valores ---------- */
+function ZoneRow({ z, reload }) {
+  const [edit, setEdit] = useState(false);
+  const [f, setF] = useState({ name: z.name, fee: String(z.fee) });
+  const hidden = z.active === false;
+
+  async function save(e) {
+    e.preventDefault();
+    const { error } = await supabase.from('delivery_zones').update({ name: f.name.trim(), fee: Number(f.fee) }).eq('id', z.id);
+    if (error) return alert(error.message);
+    setEdit(false);
+    reload();
+  }
+  async function toggle() {
+    const { error } = await supabase.from('delivery_zones').update({ active: hidden }).eq('id', z.id);
+    if (error) alert(error.message);
+    reload();
+  }
+  async function remove() {
+    if (!confirm(`Apagar o local "${z.name}"?\n\nPedidos antigos não são afetados. Se só quer parar de atender lá por um tempo, use "Ocultar".`)) return;
+    const { error } = await supabase.from('delivery_zones').delete().eq('id', z.id);
+    if (error) return alert('Não consegui apagar: ' + error.message + '\n\nTente "Ocultar".');
+    reload();
+  }
+
+  if (edit) {
+    return (
+      <form onSubmit={save} style={{ ...line, padding: '12px 0' }}>
+        <span style={lab}>Local</span>
+        <input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required />
+        <span style={lab}>Valor (R$)</span>
+        <input type="number" step="0.01" min="0" value={f.fee} onChange={(e) => setF({ ...f, fee: e.target.value })} required />
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button>Salvar</button>
+          <button type="button" className="ghost" onClick={() => setEdit(false)}>Cancelar</button>
+        </div>
+      </form>
+    );
+  }
+  return (
+    <div style={{ ...line, padding: '12px 0', opacity: hidden ? 0.65 : 1 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+        <span><b>{z.name}</b> {hidden && <span className="tag">Oculto</span>}</span>
+        <b>{brl(z.fee)}</b>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="ghost" onClick={() => setEdit(true)}>Editar</button>
+        <button type="button" className="ghost" onClick={toggle}>{hidden ? 'Mostrar' : 'Ocultar'}</button>
+        <button type="button" className="ghost" onClick={remove} style={{ color: '#d6204b' }}>Apagar</button>
+      </div>
+    </div>
+  );
+}
+
+function Locais() {
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState('');
+  const [n, setN] = useState({ name: '', fee: '' });
+  const load = () => supabase.from('delivery_zones').select('*').order('name').then(({ data, error }) => {
+    setErr(error ? error.message : '');
+    setRows(data || []);
+  });
+  useEffect(() => { load(); }, []);
+
+  async function add(e) {
+    e.preventDefault();
+    const { error } = await supabase.from('delivery_zones').insert({ name: n.name.trim(), fee: Number(n.fee) });
+    if (error) return alert(error.message);
+    setN({ name: '', fee: '' });
+    load();
+  }
+
+  return (
+    <>
+      {err && (
+        <div className="card">
+          <b>Falta criar a tabela de locais</b>
+          <p className="muted" style={help}>Rode o SQL de locais de entrega no Supabase e volte aqui. ({err})</p>
+        </div>
+      )}
+      <form className="card" onSubmit={add}>
+        <b style={{ fontSize: 17 }}>Novo local de entrega</b>
+        <p className="muted" style={help}>O valor é o que o cliente paga de entrega naquele local.</p>
+        <span style={lab}>Local (bairro ou cidade)</span>
+        <input placeholder="Ex.: Holambra" value={n.name} onChange={(e) => setN({ ...n, name: e.target.value })} required />
+        <span style={lab}>Valor (R$)</span>
+        <input type="number" step="0.01" min="0" placeholder="Ex.: 35.00" value={n.fee} onChange={(e) => setN({ ...n, fee: e.target.value })} required />
+        <button style={{ marginTop: 12 }}>Adicionar</button>
+      </form>
+      <div className="card">
+        <b style={{ fontSize: 17 }}>Locais e valores ({rows.length})</b>
+        <p className="muted" style={help}>Locais ocultos não aparecem para o cliente.</p>
+        {rows.map((z) => <ZoneRow key={z.id + ':' + z.name + ':' + z.fee + ':' + z.active} z={z} reload={load} />)}
+      </div>
     </>
   );
 }
@@ -381,13 +588,14 @@ export default function Admin() {
   return (
     <Auth role="admin">
       <div className="tabs">
-        {['pedidos', 'estoque', 'caixa'].map((t) => (
+        {['pedidos', 'estoque', 'caixa', 'locais'].map((t) => (
           <button key={t} className={tab === t ? '' : 'ghost'} onClick={() => setTab(t)}>{t}</button>
         ))}
       </div>
       {tab === 'pedidos' && <Pedidos />}
       {tab === 'estoque' && <Estoque />}
       {tab === 'caixa' && <Caixa />}
+      {tab === 'locais' && <Locais />}
     </Auth>
   );
 }

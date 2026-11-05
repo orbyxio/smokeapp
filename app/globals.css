@@ -422,7 +422,6 @@ a.btn.ghost {
   height: 8px;
   border-radius: 50%;
   background: var(--grad-full);
-  animation: pulse 1.8s ease-in-out infinite;
 }
 /* Mensagem que "digita" sozinha: o texto completo fica invisível só para
    reservar o espaço e a tela não pular enquanto escreve */

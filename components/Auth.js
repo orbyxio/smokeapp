@@ -30,7 +30,6 @@ function Typing({ text, speed = 38 }) {
       <span className="tw-full" aria-hidden="true">{text}</span>
       <span className="tw-live" aria-hidden="true">
         <span className="greet-text">{text.slice(0, n)}</span>
-        <span className="caret" />
       </span>
     </div>
   );
@@ -114,7 +113,6 @@ export default function Auth({ role, children }) {
         </div>
 
         <div className="login-mid">
-          <div className="logo" style={{ margin: '0 auto 18px' }}>✦</div>
           <form className="card login-card" onSubmit={login}>
             <h2 className="login-title">Entrar</h2>
             <p className="muted" style={{ marginTop: 0 }}>Use seu e-mail e senha para continuar.</p>

@@ -1,7 +1,7 @@
 import './globals.css';
- 
-export const metadata = { title: 'Loja' };
- 
+
+export const metadata = { title: 'Smoke Euphoria' };
+
 // viewportFit "cover" libera a área do entalhe/barra do iPhone (safe area)
 export const viewport = {
   width: 'device-width',
@@ -9,7 +9,7 @@ export const viewport = {
   viewportFit: 'cover',
   themeColor: '#f6f3fb',
 };
- 
+
 export default function Layout({ children }) {
   return (
     <html lang="pt-BR">
@@ -25,4 +25,3 @@ export default function Layout({ children }) {
     </html>
   );
 }
- 

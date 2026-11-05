@@ -10,10 +10,23 @@ const hue = (s = '') => {
 };
 
 const PAY = [
-  { id: 'pix', icon: '⚡', label: 'Pix', sub: 'agora' },
-  { id: 'card', icon: '💳', label: 'Cartão', sub: 'na entrega' },
-  { id: 'cash', icon: '💵', label: 'Dinheiro', sub: 'na entrega' },
+  { id: 'pix', icon: 'pix', label: 'Pix', sub: 'agora' },
+  { id: 'card', icon: 'card', label: 'Cartão', sub: 'na entrega' },
+  { id: 'cash', icon: 'cash', label: 'Dinheiro', sub: 'na entrega' },
 ];
+
+// Ícones de linha (SVG) — sem emojis
+const PAYICON = {
+  pix: <path d="M12 3l9 9-9 9-9-9 9-9z" />,
+  card: (<><rect x="3" y="6" width="18" height="13" rx="2.5" /><path d="M3 10.5h18" /></>),
+  cash: (<><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.5" /></>),
+};
+const PayIcon = ({ name }) => (
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {PAYICON[name]}
+  </svg>
+);
 
 export default function Loja() {
   const [products, setProducts] = useState([]);
@@ -64,7 +77,12 @@ export default function Loja() {
     return (
       <main>
         <div className="card done">
-          <div className="check">✓</div>
+          <div className="check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          </div>
           <h2>Pedido #{done.id} recebido!</h2>
           {done.pay === 'pix' ? (
             <>
@@ -72,7 +90,7 @@ export default function Loja() {
               <div className="pixbox">
                 <span>{pix}</span>
                 <button type="button" className="ghost" onClick={() => copy(pix)}>
-                  {copied ? 'Copiado ✓' : 'Copiar'}
+                  {copied ? 'Copiado' : 'Copiar'}
                 </button>
               </div>
             </>
@@ -95,9 +113,9 @@ export default function Loja() {
         <h1>Loja</h1>
         <p>Escolha, finalize em segundos e acompanhe pelo WhatsApp.</p>
         <div className="chips">
-          <span className="chip">⚡ Pix</span>
-          <span className="chip">💳 Cartão na entrega</span>
-          <span className="chip">💵 Dinheiro</span>
+          <span className="chip">Pix</span>
+          <span className="chip">Cartão na entrega</span>
+          <span className="chip">Dinheiro</span>
         </div>
       </header>
 
@@ -172,7 +190,7 @@ export default function Loja() {
                   className={`opt${f.payment === o.id ? ' on' : ''}`}
                   onClick={() => setF({ ...f, payment: o.id })}
                 >
-                  <i>{o.icon}</i>{o.label}<small>{o.sub}</small>
+                  <i><PayIcon name={o.icon} /></i>{o.label}<small>{o.sub}</small>
                 </button>
               ))}
             </div>

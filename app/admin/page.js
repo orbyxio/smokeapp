@@ -503,6 +503,11 @@ function ZoneRow({ z, reload }) {
     if (error) alert(error.message);
     reload();
   }
+  async function pin() {
+    const { error } = await supabase.from('delivery_zones').update({ priority: (z.priority || 0) > 0 ? 0 : 1 }).eq('id', z.id);
+    if (error) alert(error.message);
+    reload();
+  }
   async function remove() {
     if (!confirm(`Apagar o local "${z.name}"?\n\nPedidos antigos não são afetados. Se só quer parar de atender lá por um tempo, use "Ocultar".`)) return;
     const { error } = await supabase.from('delivery_zones').delete().eq('id', z.id);
@@ -527,11 +532,12 @@ function ZoneRow({ z, reload }) {
   return (
     <div style={{ ...line, padding: '12px 0', opacity: hidden ? 0.65 : 1 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
-        <span><b>{z.name}</b> {hidden && <span className="tag">Oculto</span>}</span>
+        <span><b>{z.name}</b> {(z.priority || 0) > 0 && <span className="tag">No topo</span>} {hidden && <span className="tag">Oculto</span>}</span>
         <b>{brl(z.fee)}</b>
       </div>
       <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
         <button type="button" className="ghost" onClick={() => setEdit(true)}>Editar</button>
+        <button type="button" className="ghost" onClick={pin}>{(z.priority || 0) > 0 ? 'Tirar do topo' : 'Fixar no topo'}</button>
         <button type="button" className="ghost" onClick={toggle}>{hidden ? 'Mostrar' : 'Ocultar'}</button>
         <button type="button" className="ghost" onClick={remove} style={{ color: '#d6204b' }}>Apagar</button>
       </div>
@@ -543,7 +549,7 @@ function Locais() {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
   const [n, setN] = useState({ name: '', fee: '' });
-  const load = () => supabase.from('delivery_zones').select('*').order('name').then(({ data, error }) => {
+  const load = () => supabase.from('delivery_zones').select('*').order('priority', { ascending: false }).order('name').then(({ data, error }) => {
     setErr(error ? error.message : '');
     setRows(data || []);
   });
@@ -567,8 +573,8 @@ function Locais() {
       )}
       <form className="card" onSubmit={add}>
         <b style={{ fontSize: 17 }}>Novo local de entrega</b>
-        <p className="muted" style={help}>O valor é o que o cliente paga de entrega naquele local.</p>
-        <span style={lab}>Local (bairro ou cidade)</span>
+        <p className="muted" style={help}>O cliente digita o CEP e o sistema aplica o valor sozinho, sem mostrar esta lista. Use o nome exatamente como a <b>cidade</b> (ex.: Holambra) ou o <b>bairro</b> (ex.: Bairrinho). Se o CEP bater com um bairro e com a cidade, vale o bairro.</p>
+        <span style={lab}>Cidade ou bairro</span>
         <input placeholder="Ex.: Holambra" value={n.name} onChange={(e) => setN({ ...n, name: e.target.value })} required />
         <span style={lab}>Valor (R$)</span>
         <input type="number" step="0.01" min="0" placeholder="Ex.: 35.00" value={n.fee} onChange={(e) => setN({ ...n, fee: e.target.value })} required />
@@ -576,7 +582,7 @@ function Locais() {
       </form>
       <div className="card">
         <b style={{ fontSize: 17 }}>Locais e valores ({rows.length})</b>
-        <p className="muted" style={help}>Locais ocultos não aparecem para o cliente.</p>
+        <p className="muted" style={help}>Local oculto = não entregamos lá. Quem digitar um CEP que não está na lista recebe o aviso de que ainda não entregamos.</p>
         {rows.map((z) => <ZoneRow key={z.id + ':' + z.name + ':' + z.fee + ':' + z.active} z={z} reload={load} />)}
       </div>
     </>

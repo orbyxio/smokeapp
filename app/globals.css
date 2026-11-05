@@ -462,6 +462,75 @@ a.btn.ghost {
   background: var(--violet);
   animation: blink 1s steps(2) infinite;
 }
+/* Resumo + cartões embaixo da mensagem de boas-vindas */
+.login-sum {
+  max-width: 34ch;
+  margin: 14px auto 0;
+  font-size: 14.5px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--muted);
+  animation: rise 0.6s var(--ease) 1.3s both;
+}
+.login-sum strong {
+  font-weight: 800;
+  color: var(--ink);
+}
+.feats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+.feat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 12px 6px 10px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1.5px solid var(--line);
+  border-radius: 18px;
+  transition: transform 0.35s var(--ease), box-shadow 0.35s, border-color 0.35s, background 0.35s;
+  /* "backwards" para a animação de entrada não travar o destaque (.on) depois */
+  animation: rise 0.6s var(--ease) calc(1.5s + var(--i, 0) * 0.14s) backwards;
+}
+.feat .ico {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 2px;
+  color: var(--violet);
+  border-radius: 14px;
+  background: var(--lilac);
+  transition: background 0.35s, transform 0.35s var(--ease);
+}
+.feat b {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.feat small {
+  min-height: 2.5em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: #4b4560;
+}
+.feat.on {
+  transform: translateY(-4px);
+  background: #fff;
+  border-color: rgba(143, 59, 255, 0.45);
+  box-shadow: 0 16px 30px -16px rgba(190, 50, 240, 0.6);
+}
+.feat.on .ico {
+  color: #fff;
+  background: var(--grad);
+  transform: scale(1.08) rotate(-4deg);
+}
 .login-mid {
   flex: 1;
   display: flex;
@@ -901,6 +970,10 @@ a.btn.ghost {
   background: var(--grad);
   box-shadow: 0 22px 44px -12px rgba(190, 50, 240, 0.7);
   animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.check svg {
+  width: 44px;
+  height: 44px;
 }
 .pixbox {
   display: flex;

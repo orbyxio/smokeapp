@@ -76,11 +76,41 @@ function Thumb({ src, name }) {
     : <span style={thumb}>{(name || '?').trim().charAt(0).toUpperCase()}</span>;
 }
 
-// Linha de cada produto: foto, marca e botões de trocar/remover a foto
-function ProductRow({ p, reload, brands }) {
+const line = { borderTop: '1px solid rgba(20,16,31,.08)' };
+const help = { margin: '2px 0 8px', fontSize: 13, lineHeight: 1.35 };
+const lab = { display: 'block', margin: '10px 0 4px', fontSize: 13, fontWeight: 700 };
+
+// Quantidade de um sabor/variação
+function VariantRow({ v, reload }) {
+  const [val, setVal] = useState(v.stock);
+  async function save() {
+    const diff = Number(val) - v.stock;
+    if (!diff) return;
+    await supabase.from('variants').update({ stock: Number(val) }).eq('id', v.id);
+    await supabase.from('stock_movements').insert({ variant_id: v.id, qty_change: diff, reason: 'ajuste' });
+    reload();
+  }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', ...line }}>
+      <span style={{ minWidth: 0 }}><b>{v.label}</b><br /><span className="muted">{brl(v.price)}</span></span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <input type="number" min="0" value={val} aria-label={`Estoque de ${v.label}`}
+          onChange={(e) => setVal(e.target.value)} style={{ width: 84 }} />
+        <button type="button" onClick={save}>Salvar</button>
+      </span>
+    </div>
+  );
+}
+
+// Um cartão completo por produto
+function ProductCard({ p, reload }) {
   const [brand, setBrand] = useState(p.brand || '');
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [nv, setNv] = useState({ label: '', price: '', stock: '' });
   const pick = useRef(null);
+  const hidden = p.active === false;
+  const vars = p.variants || [];
 
   async function onFile(e) {
     const file = e.target.files && e.target.files[0];
@@ -98,7 +128,7 @@ function ProductRow({ p, reload, brands }) {
     setBusy(false);
   }
   async function removePhoto() {
-    if (!confirm('Remover a foto deste produto?')) return;
+    if (!confirm('Tirar a foto deste produto?')) return;
     setBusy(true);
     const { error } = await supabase.from('products').update({ image_url: null }).eq('id', p.id);
     if (error) alert(error.message);
@@ -112,66 +142,127 @@ function ProductRow({ p, reload, brands }) {
     if (error) alert(error.message);
     reload();
   }
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 0', borderTop: '1px solid rgba(20,16,31,.08)' }}>
-      <Thumb src={p.image_url} name={p.name} />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-        <b>{p.name}</b>
-        <input
-          list="marcas"
-          placeholder="Marca"
-          value={brand}
-          onChange={(e) => setBrand(e.target.value)}
-          onBlur={saveBrand}
-          style={{ marginTop: 6 }}
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
-          <button type="button" disabled={busy} onClick={() => pick.current && pick.current.click()}>
-            {busy ? 'Enviando...' : p.image_url ? 'Trocar foto' : 'Adicionar foto'}
-          </button>
-          {p.image_url && !busy && <button type="button" className="ghost" onClick={removePhoto}>Remover</button>}
-        </div>
-        <input ref={pick} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
-      </div>
-    </div>
-  );
-}
-
-function StockRow({ v, reload }) {
-  const [val, setVal] = useState(v.stock);
-  async function save() {
-    const diff = Number(val) - v.stock;
-    if (!diff) return;
-    await supabase.from('variants').update({ stock: Number(val) }).eq('id', v.id);
-    await supabase.from('stock_movements').insert({ variant_id: v.id, qty_change: diff, reason: 'ajuste' });
+  async function toggleHidden() {
+    const { error } = await supabase.from('products').update({ active: hidden }).eq('id', p.id);
+    if (error) return alert('Não deu para ocultar: ' + error.message + '\n\nRode no Supabase: alter table products add column if not exists active boolean not null default true;');
     reload();
   }
+  async function addVariant(e) {
+    e.preventDefault();
+    const { data: v, error } = await supabase.from('variants')
+      .insert({ product_id: p.id, label: nv.label, price: Number(nv.price), stock: Number(nv.stock || 0) }).select().single();
+    if (error) return alert(error.message);
+    if (Number(nv.stock) > 0) await supabase.from('stock_movements').insert({ variant_id: v.id, qty_change: Number(nv.stock), reason: 'entrada' });
+    setNv({ label: '', price: '', stock: '' });
+    setAdding(false);
+    reload();
+  }
+  async function remove() {
+    if (!confirm(`Apagar "${p.name}" de vez?\n\nIsso remove o produto, os sabores e a foto, e não dá para desfazer.\n\nSe você só quer tirar da loja por um tempo, use "Ocultar da loja".`)) return;
+    setBusy(true);
+    const ids = vars.map((v) => v.id);
+    try {
+      if (ids.length) {
+        const used = await supabase.from('order_items').select('id').in('variant_id', ids).limit(1);
+        if (!used.error && used.data && used.data.length) {
+          setBusy(false);
+          return alert('Esse produto já foi vendido em algum pedido, então não pode ser apagado (o histórico de pedidos ficaria quebrado).\n\nUse "Ocultar da loja": ele some para os clientes e continua guardado aqui.');
+        }
+        await supabase.from('stock_movements').delete().in('variant_id', ids);
+        const r1 = await supabase.from('variants').delete().in('id', ids);
+        if (r1.error) throw r1.error;
+      }
+      const r2 = await supabase.from('products').delete().eq('id', p.id);
+      if (r2.error) throw r2.error;
+      if (p.image_url && p.image_url.includes('/produtos/')) {
+        await supabase.storage.from('produtos').remove([decodeURIComponent(p.image_url.split('/produtos/')[1].split('?')[0])]);
+      }
+    } catch (err) {
+      alert('Não consegui apagar: ' + (err.message || err) + '\n\nSe o produto já tem pedidos, use "Ocultar da loja".');
+    }
+    setBusy(false);
+    reload();
+  }
+
   return (
-    <div className="row">
-      <span>{v.products.name} · {v.label} · {brl(v.price)}</span>
-      <span><input type="number" min="0" value={val} onChange={(e) => setVal(e.target.value)} /> <button onClick={save}>Salvar</button></span>
+    <div className="card" style={hidden ? { opacity: 0.75 } : undefined}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <Thumb src={p.image_url} name={p.name} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <b style={{ fontSize: 17 }}>{p.name}</b>
+          <div>{hidden ? <span className="tag">Oculto na loja</span> : <span className="muted">Aparecendo na loja</span>}</div>
+        </div>
+      </div>
+
+      <span style={lab}>Foto do produto</span>
+      <p className="muted" style={help}>É a imagem que o cliente vê na loja.</p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" disabled={busy} onClick={() => pick.current && pick.current.click()}>
+          {busy ? 'Aguarde...' : p.image_url ? 'Trocar foto' : 'Adicionar foto'}
+        </button>
+        {p.image_url && !busy && <button type="button" className="ghost" onClick={removePhoto}>Tirar foto</button>}
+      </div>
+      <input ref={pick} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
+
+      <span style={lab}>Marca</span>
+      <input list="marcas" placeholder="Ex.: Ignite" value={brand}
+        onChange={(e) => setBrand(e.target.value)} onBlur={saveBrand} />
+
+      <span style={lab}>Sabores e estoque</span>
+      <p className="muted" style={help}>Mude a quantidade e toque em Salvar.</p>
+      {vars.length === 0 && <p className="muted">Nenhum sabor cadastrado.</p>}
+      {vars.map((v) => <VariantRow key={v.id + ':' + v.stock} v={v} reload={reload} />)}
+
+      {adding ? (
+        <form onSubmit={addVariant} style={{ ...line, paddingTop: 10 }}>
+          <input placeholder="Sabor ou tamanho (ex.: Menta)" value={nv.label} onChange={(e) => setNv({ ...nv, label: e.target.value })} required />
+          <input type="number" step="0.01" placeholder="Preço" value={nv.price} onChange={(e) => setNv({ ...nv, price: e.target.value })} required />
+          <input type="number" placeholder="Quantidade em estoque" value={nv.stock} onChange={(e) => setNv({ ...nv, stock: e.target.value })} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button>Adicionar sabor</button>
+            <button type="button" className="ghost" onClick={() => setAdding(false)}>Cancelar</button>
+          </div>
+        </form>
+      ) : (
+        <div style={{ marginTop: 6 }}>
+          <button type="button" className="ghost" onClick={() => setAdding(true)}>+ Adicionar outro sabor</button>
+        </div>
+      )}
+
+      <div style={{ ...line, marginTop: 14, paddingTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="ghost" disabled={busy} onClick={toggleHidden}>
+          {hidden ? 'Mostrar na loja' : 'Ocultar da loja'}
+        </button>
+        <button type="button" className="ghost" disabled={busy} onClick={remove} style={{ color: '#d6204b' }}>Apagar produto</button>
+      </div>
+      <p className="muted" style={{ ...help, marginTop: 8 }}>
+        Ocultar: o produto some para os clientes, mas continua guardado aqui. Apagar: remove de vez.
+      </p>
     </div>
   );
 }
 
 function Estoque() {
-  const [rows, setRows] = useState([]);
   const [prods, setProds] = useState([]);
   const empty = { name: '', brand: '', label: '', price: '', stock: '' };
   const [n, setN] = useState(empty);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
   const pick = useRef(null);
 
   const load = () => {
-    supabase.from('variants').select('*, products(name)').order('product_id').then(({ data }) => setRows(data || []));
-    supabase.from('products').select('*').order('id', { ascending: false }).then(({ data }) => setProds(data || []));
+    supabase.from('products').select('*, variants(*)').order('id', { ascending: false })
+      .then(({ data }) => setProds((data || []).map((p) => ({ ...p, variants: (p.variants || []).sort((a, b) => a.id - b.id) }))));
   };
   useEffect(() => { load(); }, []);
 
   const brands = [...new Set(prods.map((p) => p.brand).filter(Boolean))];
+  const shown = prods.filter((p) => {
+    const t = q.trim().toLowerCase();
+    return !t || p.name.toLowerCase().includes(t) || (p.brand || '').toLowerCase().includes(t);
+  });
 
   function choose(e) {
     const f = e.target.files && e.target.files[0];
@@ -202,7 +293,7 @@ function Estoque() {
         const { error: e2 } = await supabase.from('products').update({ image_url: url }).eq('id', p.id);
         if (e2) throw e2;
       } catch (err) {
-        alert('Produto criado, mas a foto não subiu: ' + (err.message || err) + '\nVocê pode adicionar a foto de novo na lista abaixo.');
+        alert('Produto criado, mas a foto não subiu: ' + (err.message || err) + '\nVocê pode adicionar a foto de novo no cartão do produto.');
       }
     }
     setN(empty);
@@ -217,35 +308,41 @@ function Estoque() {
       <datalist id="marcas">{brands.map((b) => <option key={b} value={b} />)}</datalist>
 
       <form className="card" onSubmit={add}>
-        <b>Novo produto</b>
+        <b style={{ fontSize: 17 }}>Cadastrar produto novo</b>
+        <p className="muted" style={help}>Preencha e toque em Adicionar. O produto aparece na loja na hora.</p>
+
+        <span style={lab}>Foto (opcional)</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           {preview ? <img src={preview} alt="" style={thumb} /> : <span style={thumb}>+</span>}
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button type="button" className="ghost" onClick={() => pick.current && pick.current.click()}>
               {preview ? 'Trocar foto' : 'Escolher foto'}
             </button>
-            {preview && <button type="button" className="ghost" onClick={clearPhoto}>Remover</button>}
+            {preview && <button type="button" className="ghost" onClick={clearPhoto}>Tirar</button>}
           </div>
           <input ref={pick} type="file" accept="image/*" onChange={choose} style={{ display: 'none' }} />
         </div>
-        <input placeholder="Produto" value={n.name} onChange={k('name')} required />
-        <input list="marcas" placeholder="Marca" value={n.brand} onChange={k('brand')} />
-        <input placeholder="Variação (sabor, tamanho)" value={n.label} onChange={k('label')} required />
-        <input type="number" step="0.01" placeholder="Preço" value={n.price} onChange={k('price')} required />
-        <input type="number" placeholder="Quantidade em estoque" value={n.stock} onChange={k('stock')} />
-        <button disabled={busy}>{busy ? 'Salvando...' : 'Adicionar'}</button>
+
+        <span style={lab}>Nome do produto</span>
+        <input placeholder="Ex.: Ignite V50" value={n.name} onChange={k('name')} required />
+        <span style={lab}>Marca</span>
+        <input list="marcas" placeholder="Ex.: Ignite" value={n.brand} onChange={k('brand')} />
+        <span style={lab}>Primeiro sabor ou tamanho</span>
+        <input placeholder="Ex.: Menta" value={n.label} onChange={k('label')} required />
+        <span style={lab}>Preço (R$)</span>
+        <input type="number" step="0.01" placeholder="Ex.: 89.90" value={n.price} onChange={k('price')} required />
+        <span style={lab}>Quantidade em estoque</span>
+        <input type="number" placeholder="Ex.: 10" value={n.stock} onChange={k('stock')} />
+        <button disabled={busy} style={{ marginTop: 12 }}>{busy ? 'Salvando...' : 'Adicionar'}</button>
       </form>
 
-      <div className="card">
-        <b>Fotos e marcas</b>
-        {prods.length === 0 && <p className="muted">Nenhum produto ainda.</p>}
-        {prods.map((p) => <ProductRow key={p.id + ':' + (p.image_url || '') + ':' + (p.brand || '')} p={p} reload={load} brands={brands} />)}
+      <div style={{ margin: '18px 4px 8px' }}>
+        <b style={{ fontSize: 17 }}>Produtos cadastrados ({prods.length})</b>
+        <p className="muted" style={help}>Aqui você troca foto, marca e estoque, adiciona sabores, oculta ou apaga.</p>
+        {prods.length > 3 && <input type="search" placeholder="Buscar produto ou marca" value={q} onChange={(e) => setQ(e.target.value)} />}
       </div>
-
-      <div className="card">
-        <b>Estoque</b>
-        {rows.map((v) => <StockRow key={v.id + ':' + v.stock} v={v} reload={load} />)}
-      </div>
+      {prods.length === 0 && <div className="card"><p className="muted">Nenhum produto ainda.</p></div>}
+      {shown.map((p) => <ProductCard key={p.id} p={p} reload={load} />)}
     </>
   );
 }

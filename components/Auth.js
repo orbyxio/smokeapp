@@ -2,8 +2,52 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
-// ✏️ Troque pelo nome da sua empresa (aparece no rodapé da tela de login)
+// EDITE: troque pelo nome da sua empresa (aparece no rodapé da tela de login)
 const COMPANY = 'Smoke Euphoria';
+
+// EDITE: textos do resumo que aparece embaixo da mensagem de boas-vindas.
+// - resumo: use **duas estrelas** para deixar uma parte em negrito
+// - icon: estoque, pedidos, caixa, entregas, endereco ou valores
+const INFO = {
+  admin: {
+    resumo: 'Aqui você controla toda a operação: o **estoque por marca e sabor**, os **pedidos** e o **dinheiro que entra e sai**.',
+    itens: [
+      { icon: 'estoque', titulo: 'Estoque', texto: 'Marcas, sabores e quantidades' },
+      { icon: 'pedidos', titulo: 'Pedidos', texto: 'Cada venda acompanhada' },
+      { icon: 'caixa', titulo: 'Caixa', texto: 'Entradas, saídas e repasses' },
+    ],
+  },
+  entregas: {
+    resumo: 'Seu painel já está pronto: os **pedidos** chegam até você, com **endereço do cliente** e os **valores que você recebe**.',
+    itens: [
+      { icon: 'entregas', titulo: 'Pedidos', texto: 'As entregas que chegam pra você' },
+      { icon: 'endereco', titulo: 'Endereços', texto: 'Local e contato do cliente' },
+      { icon: 'valores', titulo: 'Valores', texto: 'O que você recebe e repassa' },
+    ],
+  },
+};
+
+// Ícones de linha (SVG) — sem emojis
+const ICONS = {
+  estoque: (<><path d="M21 8l-9-5-9 5v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>),
+  pedidos: (<><path d="M7 3h10a1 1 0 0 1 1 1v17l-3-2-3 2-3-2-3 2V4a1 1 0 0 1 1-1z" /><path d="M9 8h6M9 12h6" /></>),
+  caixa: (<><rect x="3" y="6" width="18" height="14" rx="3" /><path d="M3 10h18" /><circle cx="16.5" cy="15" r="1.2" /></>),
+  entregas: (<><path d="M3 7h11v9H3z" /><path d="M14 10h4l3 3v3h-7" /><circle cx="7" cy="17.5" r="1.8" /><circle cx="17" cy="17.5" r="1.8" /></>),
+  endereco: (<><path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></>),
+  valores: (<><rect x="2.5" y="6" width="19" height="12" rx="2.5" /><circle cx="12" cy="12" r="2.5" /></>),
+};
+
+function Icon({ name }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor"
+      strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  );
+}
+
+// **texto** vira negrito
+const bold = (s) => s.split('**').map((p, i) => (i % 2 ? <strong key={i}>{p}</strong> : p));
 
 // Mensagem que "digita" sozinha. O texto completo reserva o espaço
 // (invisível) para a tela não pular enquanto escreve.
@@ -49,6 +93,7 @@ export default function Auth({ role, children }) {
   const [savedName, setSavedName] = useState('');
   const [pending, setPending] = useState(false);
   const [splash, setSplash] = useState(false);
+  const [hl, setHl] = useState(0);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -84,6 +129,13 @@ export default function Auth({ role, children }) {
     return () => clearTimeout(t);
   }, [splash]);
 
+  // Destaque que passa de cartão em cartão na tela de login
+  useEffect(() => {
+    if (session !== null) return;
+    const id = setInterval(() => setHl((h) => (h + 1) % 3), 2600);
+    return () => clearInterval(id);
+  }, [session]);
+
   async function login(e) {
     e.preventDefault();
     setBusy(true);
@@ -101,6 +153,7 @@ export default function Auth({ role, children }) {
     const greeting = isAdmin
       ? `Bem-vinda ao seu painel de administradora${savedName ? ' ' + savedName : ''}`
       : 'Bem-vindo ao seu painel de Entregas';
+    const info = isAdmin ? INFO.admin : INFO.entregas;
 
     return (
       <div className="login">
@@ -110,6 +163,16 @@ export default function Auth({ role, children }) {
         <div className="login-greet">
           <span className="pillrole">{isAdmin ? 'Painel administrativo' : 'Painel de entregas'}</span>
           <Typing key={greeting} text={greeting} />
+          <p className="login-sum">{bold(info.resumo)}</p>
+          <div className="feats">
+            {info.itens.map((it, i) => (
+              <div key={it.titulo} className={`feat${hl === i ? ' on' : ''}`} style={{ '--i': i }}>
+                <span className="ico"><Icon name={it.icon} /></span>
+                <b>{it.titulo}</b>
+                <small>{it.texto}</small>
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="login-mid">
@@ -163,7 +226,12 @@ export default function Auth({ role, children }) {
     <>
       {splash && (
         <div className="splash" role="status">
-          <div className="check">✓</div>
+          <div className="check">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"
+              strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          </div>
           <h2>{isAdmin ? `Bem-vinda, ${first}!` : `Olá, ${first}!`}</h2>
           <p className="muted">Preparando seu painel…</p>
           <div className="loadbar"><i /></div>

@@ -21,7 +21,7 @@ function Pedidos() {
       <div className="row"><b>#{o.id} · {o.customer_name}</b><span className="tag">{o.status}</span></div>
       <p>{o.order_items.map((i) => `${i.qty}x ${i.item_label}`).join(', ')}</p>
       <p className="muted">{o.address} · {o.customer_phone}</p>
-      <p>{brl(o.total)} · {PAY[o.payment_method]} · {o.payment_status}</p>
+      <p>{brl(o.total)}{o.zone_name ? ` (entrega ${brl(o.delivery_fee)})` : ''} · {PAY[o.payment_method]} · {o.payment_status}</p>
       {o.payment_status === 'pendente' && o.status !== 'cancelado' && <button onClick={() => act('mark_paid', o.id)}>Confirmar pagamento</button>}{' '}
       {['novo', 'em_entrega'].includes(o.status) && <button className="ghost" onClick={() => confirm('Cancelar pedido?') && act('cancel_order', o.id)}>Cancelar</button>}
     </div>
@@ -254,7 +254,7 @@ function Estoque() {
 
   const load = () => {
     supabase.from('products').select('*, variants(*)').order('id', { ascending: false })
-      .then(({ data }) => setProds((data || []).map((p) => ({ ...p, variants: (p.variants || []).sort((a, b) => a.id - b.id) }))));
+      .then(({ data }) => setProds((data || []).map((p) => ({ ...p, variants: (p.variants || []).sort((x, y) => String(x.label).localeCompare(String(y.label), 'pt-BR', { numeric: true })) }))));
   };
   useEffect(() => { load(); }, []);
 

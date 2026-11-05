@@ -26,10 +26,7 @@ const wa = (t) => `https://wa.me/${WA}?text=${encodeURIComponent(t)}`;
 // Tenta primeiro com foto e marca; se essas colunas ainda não existirem no
 // Supabase, cai automaticamente para a consulta simples (a loja nunca quebra).
 const SELECTS = [
-  'id,name,image_url,brand,variants(id,label,price,stock)',
-  'id,name,image_url,variants(id,label,price,stock)',
-  'id,name,brand,variants(id,label,price,stock)',
-  'id,name,variants(id,label,price,stock)',
+  '*,variants(id,label,price,stock)', // traz foto, marca e "oculto" quando existirem
 ];
 
 const PAY = [
@@ -215,7 +212,7 @@ export default function Loja() {
 
   /* ---------- dados derivados ---------- */
   const catalog = useMemo(() => products
-    .filter((p) => p.variants && p.variants.length)
+    .filter((p) => p.active !== false && p.variants && p.variants.length)
     .map((p) => {
       const variants = p.variants
         .map((v) => ({ ...v, price: Number(v.price) || 0, stock: Number(v.stock) || 0 }))

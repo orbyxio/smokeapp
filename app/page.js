@@ -126,7 +126,8 @@ export default function Loja() {
   const [slide, setSlide] = useState(0);
   const [toast, setToast] = useState(null);
 
-  const [f, setF] = useState({ name: '', phone: '', address: '', payment: 'pix' });
+  const [f, setF] = useState({ name: '', phone: '', address: '', payment: 'pix', zone: '' });
+  const [zones, setZones] = useState([]);
   const [done, setDone] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -152,6 +153,8 @@ export default function Loja() {
   /* ---------- carregamento e persistência ---------- */
   useEffect(() => {
     load();
+    supabase.from('delivery_zones').select('id,name,fee').eq('active', true).order('name')
+      .then(({ data, error }) => setZones(error ? [] : (data || [])));
     try { setCart(JSON.parse(localStorage.getItem('loja-cart') || '{}') || {}); } catch {}
     try { setFavs(JSON.parse(localStorage.getItem('loja-favs') || '[]') || []); } catch {}
     setReady(true);
@@ -270,7 +273,7 @@ export default function Loja() {
   const toggleFav = (id) => setFavs((fs) => (fs.includes(id) ? fs.filter((x) => x !== id) : [...fs, id]));
 
   const closeAll = () => { setMenu(false); setCartOpen(false); setPayInfo(false); setProdOpen(null); };
-  const openCart = () => { closeAll(); setCartOpen(true); };
+  const openCart = () => { closeAll(); setToast(null); setCartOpen(true); };
   const resetFilters = () => { setQuery(''); setBrandSel(''); setOnlyFavs(false); };
   const scrollToProducts = () => setTimeout(() => {
     const el = document.getElementById('produtos');
@@ -282,6 +285,9 @@ export default function Loja() {
   const goBrand = (b) => { closeAll(); setOnlyFavs(false); setQuery(''); setBrandSel(b); scrollToProducts(); };
 
   const upd = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const zone = zones.find((z) => String(z.id) === String(f.zone));
+  const fee = zone ? Number(zone.fee) || 0 : 0;
+  const total = subtotal + fee;
   const copy = async (t) => {
     try {
       await navigator.clipboard.writeText(t);
@@ -293,13 +299,13 @@ export default function Loja() {
   async function send(e) {
     e.preventDefault(); setBusy(true); setErr('');
     const items = lines.map((v) => ({ variant_id: v.id, qty: cart[v.id] }));
-    const { data, error } = await supabase.rpc('create_order', {
-      p_name: f.name, p_phone: f.phone, p_address: f.address, p_payment: f.payment, p_items: items,
-    });
+    const args = { p_name: f.name, p_phone: f.phone, p_address: f.address, p_payment: f.payment, p_items: items };
+    if (zones.length) args.p_zone = zone ? zone.id : null;
+    const { data, error } = await supabase.rpc('create_order', args);
     setBusy(false);
     if (error) { setErr(error.message); load(); return; }
     closeAll();
-    setDone({ id: data, pay: f.payment });
+    setDone({ id: data, pay: f.payment, total });
     setCart({});
   }
 
@@ -311,6 +317,7 @@ export default function Loja() {
         <div className="card done">
           <div className="check"><Icon name="check" size={44} sw={3} /></div>
           <h2>Pedido #{done.id} recebido!</h2>
+          <p className="muted" style={{ margin: 0 }}>Total: <b style={{ color: 'var(--ink)' }}>{brl(done.total)}</b></p>
           {done.pay === 'pix' ? (
             <>
               <p className="muted">Pague via Pix para a chave abaixo e envie o comprovante pelo WhatsApp.</p>
@@ -656,14 +663,24 @@ export default function Loja() {
                 </div>
 
                 <div className="sum">
-                  <div className="sumline total"><span>Subtotal</span><b>{brl(subtotal)}</b></div>
-                  <p className="muted" style={{ margin: 0 }}>+ entrega</p>
+                  <div className={`sumline${zones.length ? '' : ' total'}`}><span>Subtotal</span><b>{brl(subtotal)}</b></div>
+                  <div className="sumline">
+                    <span>Entrega{zone ? ` · ${zone.name}` : ''}</span>
+                    <b>{zones.length ? (zone ? brl(fee) : 'escolha o local') : 'a combinar'}</b>
+                  </div>
+                  {zones.length > 0 && zone && <div className="sumline total"><span>Total</span><b>{brl(total)}</b></div>}
                 </div>
 
                 <form onSubmit={send}>
                   <input placeholder="Nome completo" autoComplete="name" value={f.name} onChange={upd('name')} required />
                   <input type="tel" inputMode="tel" placeholder="WhatsApp (com DDD)" autoComplete="tel" value={f.phone} onChange={upd('phone')} required />
-                  <input placeholder="Endereço completo" autoComplete="street-address" value={f.address} onChange={upd('address')} required />
+                  {zones.length > 0 && (
+                    <select value={f.zone} onChange={upd('zone')} required aria-label="Local de entrega">
+                      <option value="">Local de entrega</option>
+                      {zones.map((z) => <option key={z.id} value={z.id}>{z.name} · {brl(z.fee)}</option>)}
+                    </select>
+                  )}
+                  <input placeholder="Rua, número e complemento" autoComplete="street-address" value={f.address} onChange={upd('address')} required />
 
                   <div className="paygrid">
                     {PAY.map((o) => (
@@ -679,7 +696,7 @@ export default function Loja() {
                   </div>
 
                   {err && <p className="err">{err}</p>}
-                  <button className="cta" disabled={busy}>{busy ? 'Enviando...' : `Confirmar pedido · ${brl(subtotal)}`}</button>
+                  <button className="cta" disabled={busy}>{busy ? 'Enviando...' : `Confirmar pedido · ${brl(zones.length ? total : subtotal)}`}</button>
                 </form>
               </>
             )}

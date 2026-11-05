@@ -20,6 +20,9 @@ const BANNERS = [
   { t: 'Favoritou, ficou salvo', s: 'Toque no coração e encontre seus preferidos rapidinho.', bg: 'linear-gradient(120deg,#ff2fd0,#ff8a1f)' },
 ];
 
+// Chave Pix (se existir a variável NEXT_PUBLIC_PIX_KEY na Vercel, ela tem prioridade)
+const PIX = process.env.NEXT_PUBLIC_PIX_KEY || '50653671830';
+
 const WA = process.env.NEXT_PUBLIC_WHATSAPP;
 const wa = (t) => `https://wa.me/${WA}?text=${encodeURIComponent(t)}`;
 
@@ -126,8 +129,11 @@ export default function Loja() {
   const [slide, setSlide] = useState(0);
   const [toast, setToast] = useState(null);
 
-  const [f, setF] = useState({ name: '', phone: '', address: '', payment: 'pix', zone: '' });
-  const [zones, setZones] = useState([]);
+  const [f, setF] = useState({ name: '', phone: '', payment: 'pix', cep: '', street: '', number: '', comp: '', bairro: '', city: '', uf: '' });
+  // cep: 'idle' | 'loading' | 'ok' | 'notfound' | 'error'
+  const [cepState, setCepState] = useState('idle');
+  // quote: null | 'loading' | 'out' | 'error' | { zone, fee }
+  const [quote, setQuote] = useState(null);
   const [done, setDone] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
@@ -153,8 +159,6 @@ export default function Loja() {
   /* ---------- carregamento e persistência ---------- */
   useEffect(() => {
     load();
-    supabase.from('delivery_zones').select('id,name,fee').eq('active', true).order('name')
-      .then(({ data, error }) => setZones(error ? [] : (data || [])));
     try { setCart(JSON.parse(localStorage.getItem('loja-cart') || '{}') || {}); } catch {}
     try { setFavs(JSON.parse(localStorage.getItem('loja-favs') || '[]') || []); } catch {}
     setReady(true);
@@ -285,9 +289,11 @@ export default function Loja() {
   const goBrand = (b) => { closeAll(); setOnlyFavs(false); setQuery(''); setBrandSel(b); scrollToProducts(); };
 
   const upd = (k) => (e) => setF({ ...f, [k]: e.target.value });
-  const zone = zones.find((z) => String(z.id) === String(f.zone));
-  const fee = zone ? Number(zone.fee) || 0 : 0;
+  const cepDigits = f.cep.replace(/\D/g, '');
+  const fee = quote && typeof quote === 'object' ? Number(quote.fee) || 0 : 0;
   const total = subtotal + fee;
+  const canSend = quote && typeof quote === 'object' && f.street.trim() && f.number.trim();
+  const maskCep = (v) => { const d = v.replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
   const copy = async (t) => {
     try {
       await navigator.clipboard.writeText(t);
@@ -296,27 +302,60 @@ export default function Loja() {
     } catch {}
   };
 
+  /* ---------- CEP: busca o endereço e calcula a entrega ---------- */
+  useEffect(() => {
+    if (cepDigits.length !== 8) { setCepState('idle'); setQuote(null); return; }
+    let off = false;
+    setCepState('loading'); setQuote(null);
+    fetch(`https://viacep.com.br/ws/${cepDigits}/json/`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (off) return;
+        if (d.erro) { setCepState('notfound'); setF((x) => ({ ...x, street: '', bairro: '', city: '', uf: '' })); return; }
+        setF((x) => ({ ...x, street: d.logradouro || '', bairro: d.bairro || '', city: d.localidade || '', uf: d.uf || '' }));
+        setCepState('ok');
+      })
+      .catch(() => { if (!off) setCepState('error'); });
+    return () => { off = true; };
+  }, [cepDigits]);
+
+  useEffect(() => {
+    if (cepState !== 'ok' || !f.city) return;
+    let off = false;
+    setQuote('loading');
+    supabase.rpc('delivery_quote', { p_city: f.city, p_bairro: f.bairro || '' }).then(({ data, error }) => {
+      if (off) return;
+      if (error) return setQuote('error');
+      const row = Array.isArray(data) ? data[0] : data;
+      setQuote(row && row.fee !== undefined && row.fee !== null ? { zone: row.zone_name, fee: row.fee } : 'out');
+    });
+    return () => { off = true; };
+  }, [cepState, f.city, f.bairro]);
+
   async function send(e) {
     e.preventDefault(); setBusy(true); setErr('');
     const items = lines.map((v) => ({ variant_id: v.id, qty: cart[v.id] }));
-    const args = { p_name: f.name, p_phone: f.phone, p_address: f.address, p_payment: f.payment, p_items: items };
-    if (zones.length) args.p_zone = zone ? zone.id : null;
-    const { data, error } = await supabase.rpc('create_order', args);
+    const address = `${f.street.trim()}, ${f.number.trim()}${f.comp.trim() ? ' - ' + f.comp.trim() : ''} - ${f.bairro ? f.bairro + ', ' : ''}${f.city}/${f.uf} - CEP ${maskCep(f.cep)}`;
+    const { data, error } = await supabase.rpc('create_order', {
+      p_name: f.name, p_phone: f.phone, p_address: address, p_payment: f.payment, p_items: items,
+      p_city: f.city, p_bairro: f.bairro || '',
+    });
     setBusy(false);
     if (error) { setErr(error.message); load(); return; }
     closeAll();
-    setDone({ id: data, pay: f.payment, total });
+    setDone({ pay: f.payment, total, name: f.name.trim().split(' ')[0] });
     setCart({});
+    setF((x) => ({ ...x, cep: '', street: '', number: '', comp: '', bairro: '', city: '', uf: '' }));
   }
 
   /* ---------- pedido recebido ---------- */
   if (done) {
-    const pix = process.env.NEXT_PUBLIC_PIX_KEY;
+    const pix = PIX;
     return (
       <main className="shop">
         <div className="card done">
           <div className="check"><Icon name="check" size={44} sw={3} /></div>
-          <h2>Pedido #{done.id} recebido!</h2>
+          <h2>Pedido recebido!</h2>
           <p className="muted" style={{ margin: 0 }}>Total: <b style={{ color: 'var(--ink)' }}>{brl(done.total)}</b></p>
           {done.pay === 'pix' ? (
             <>
@@ -332,8 +371,8 @@ export default function Loja() {
             <p className="muted">O pagamento será feito na entrega.</p>
           )}
           <div className="stack">
-            <a className="btn cta" href={wa(`Acabei de fazer o pedido #${done.id} no site, segue o comprovante.`)}>Enviar comprovante</a>
-            <a className="btn ghost" href={wa(`Quero acompanhar meu pedido #${done.id}.`)}>Acompanhar pedido</a>
+            <a className="btn cta" href={wa(`Oi! Sou ${done.name || 'cliente'}, acabei de fazer um pedido no site (${brl(done.total)}). Segue o comprovante.`)}>Enviar comprovante</a>
+            <a className="btn ghost" href={wa(`Oi! Sou ${done.name || 'cliente'}, quero acompanhar meu pedido de ${brl(done.total)}.`)}>Acompanhar pedido</a>
             <button className="ghost" onClick={() => setDone(null)}>Novo pedido</button>
           </div>
         </div>
@@ -569,8 +608,8 @@ export default function Loja() {
               <button className="iconbtn" aria-label="Fechar" onClick={closeAll}><Icon name="x" /></button>
             </div>
             <div className="payrow"><span className="pico"><Icon name="pix" /></span><div><b>Pix</b><p className="muted">Pague na hora pela chave Pix e envie o comprovante pelo WhatsApp.</p></div></div>
-            <div className="payrow"><span className="pico"><Icon name="card" /></span><div><b>Cartão</b><p className="muted">Pague na entrega.</p></div></div>
-            <div className="payrow"><span className="pico"><Icon name="cash" /></span><div><b>Dinheiro</b><p className="muted">Pague na entrega.</p></div></div>
+            <div className="payrow"><span className="pico"><Icon name="card" /></span><div><b>Cartão</b><p className="muted">Pague na entrega, direto na maquininha.</p></div></div>
+            <div className="payrow"><span className="pico"><Icon name="cash" /></span><div><b>Dinheiro</b><p className="muted">Pague na entrega, direto ao entregador.</p></div></div>
             <div className="sheet-actions">
               <button className="cta" onClick={closeAll}>Entendi</button>
             </div>
@@ -663,24 +702,53 @@ export default function Loja() {
                 </div>
 
                 <div className="sum">
-                  <div className={`sumline${zones.length ? '' : ' total'}`}><span>Subtotal</span><b>{brl(subtotal)}</b></div>
+                  <div className="sumline"><span>Subtotal</span><b>{brl(subtotal)}</b></div>
                   <div className="sumline">
-                    <span>Entrega{zone ? ` · ${zone.name}` : ''}</span>
-                    <b>{zones.length ? (zone ? brl(fee) : 'escolha o local') : 'a combinar'}</b>
+                    <span>Entrega</span>
+                    <b>
+                      {quote && typeof quote === 'object' ? brl(fee)
+                        : quote === 'loading' || cepState === 'loading' ? 'calculando...'
+                        : 'informe o CEP'}
+                    </b>
                   </div>
-                  {zones.length > 0 && zone && <div className="sumline total"><span>Total</span><b>{brl(total)}</b></div>}
+                  {quote && typeof quote === 'object' && (
+                    <div className="sumline total"><span>Total</span><b>{brl(total)}</b></div>
+                  )}
                 </div>
 
                 <form onSubmit={send}>
                   <input placeholder="Nome completo" autoComplete="name" value={f.name} onChange={upd('name')} required />
                   <input type="tel" inputMode="tel" placeholder="WhatsApp (com DDD)" autoComplete="tel" value={f.phone} onChange={upd('phone')} required />
-                  {zones.length > 0 && (
-                    <select value={f.zone} onChange={upd('zone')} required aria-label="Local de entrega">
-                      <option value="">Local de entrega</option>
-                      {zones.map((z) => <option key={z.id} value={z.id}>{z.name} · {brl(z.fee)}</option>)}
-                    </select>
+                  <input
+                    inputMode="numeric"
+                    placeholder="CEP"
+                    autoComplete="postal-code"
+                    value={maskCep(f.cep)}
+                    onChange={(e) => setF({ ...f, cep: e.target.value })}
+                    maxLength={9}
+                    required
+                  />
+                  {cepState === 'loading' && <p className="muted" style={{ margin: '0 0 8px' }}>Buscando endereço...</p>}
+                  {cepState === 'notfound' && <p className="err">CEP não encontrado. Confira os números.</p>}
+                  {cepState === 'error' && <p className="err">Não consegui buscar o CEP agora. Tente de novo em instantes.</p>}
+                  {cepState === 'ok' && (
+                    <>
+                      <input placeholder="Rua" autoComplete="address-line1" value={f.street} onChange={upd('street')} required />
+                      {!f.bairro && <input placeholder="Bairro" value={f.bairro} onChange={upd('bairro')} required />}
+                      <p className="muted" style={{ margin: '0 0 8px' }}>{f.bairro ? f.bairro + ' · ' : ''}{f.city}/{f.uf}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.4fr', gap: 8 }}>
+                        <input placeholder="Número" inputMode="numeric" value={f.number} onChange={upd('number')} required />
+                        <input placeholder="Complemento (opcional)" value={f.comp} onChange={upd('comp')} />
+                      </div>
+                    </>
                   )}
-                  <input placeholder="Rua, número e complemento" autoComplete="street-address" value={f.address} onChange={upd('address')} required />
+                  {quote === 'out' && (
+                    <p className="err">
+                      Ainda não entregamos nesse endereço.
+                      {WA && <> <a href={wa(`Oi! Meu CEP é ${maskCep(f.cep)}, vocês conseguem entregar?`)} style={{ textDecoration: 'underline' }}>Falar com a loja</a></>}
+                    </p>
+                  )}
+                  {quote === 'error' && <p className="err">Não consegui calcular a entrega. Tente de novo.</p>}
 
                   <div className="paygrid">
                     {PAY.map((o) => (
@@ -696,7 +764,7 @@ export default function Loja() {
                   </div>
 
                   {err && <p className="err">{err}</p>}
-                  <button className="cta" disabled={busy}>{busy ? 'Enviando...' : `Confirmar pedido · ${brl(zones.length ? total : subtotal)}`}</button>
+                  <button className="cta" disabled={busy || !canSend}>{busy ? 'Enviando...' : canSend ? `Confirmar pedido · ${brl(total)}` : 'Informe o CEP para continuar'}</button>
                 </form>
               </>
             )}

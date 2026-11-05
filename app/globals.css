@@ -856,7 +856,7 @@ a.btn.ghost {
   font-weight: 600;
 }
 .cartbar b {
-  color: var(--yellow);
+  color: #fff;
   font-size: 20px;
   font-variant-numeric: tabular-nums;
 }

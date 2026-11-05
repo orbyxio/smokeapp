@@ -1367,7 +1367,7 @@ a.btn.ghost {
 }
 .incart {
   bottom: 10px;
-  color: var(--yellow);
+  color: #fff;
   background: var(--ink);
 }
 .fav {

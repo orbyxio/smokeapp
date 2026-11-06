@@ -5,7 +5,7 @@ import { ICONS } from '@/lib/icons';
 //   /pwa?m=admin -> manifesto do app instalável (admin, entregas ou loja)
 const APPS = {
   loja: { name: 'Smoke Euphoria', short_name: 'Smoke', start_url: '/', scope: '/' },
-  admin: { name: 'Painel Smoke Euphoria', short_name: 'Painel', start_url: '/admin', scope: '/admin' },
+    admin: { name: 'Smoke', short_name: 'Smoke', start_url: '/admin', scope: '/admin' },
   entregas: { name: 'Entregas Smoke Euphoria', short_name: 'Entregas', start_url: '/entregas', scope: '/entregas' },
 };
 

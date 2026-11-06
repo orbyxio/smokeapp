@@ -137,6 +137,9 @@ export default function Loja() {
   const [done, setDone] = useState(null);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // situação da loja: null = ainda não sei (tratado como aberta)
+  const [shop, setShop] = useState(null);
+  const [hp, setHp] = useState(''); // campo-isca contra robôs: pessoas nunca preenchem
   const [copied, setCopied] = useState(false);
 
   const selIdx = useRef(0);
@@ -155,6 +158,20 @@ export default function Loja() {
     setLoadErr(true);
     setLoaded(true);
   }
+
+  /* ---------- loja aberta ou fechada ---------- */
+  useEffect(() => {
+    let off = false;
+    const check = () => supabase.rpc('store_status').then(({ data, error }) => {
+      if (off || error) return;
+      const row = Array.isArray(data) ? data[0] : data;
+      if (row) setShop(row);
+    });
+    check();
+    const t = setInterval(check, 60000);
+    return () => { off = true; clearInterval(t); };
+  }, []);
+  const closed = shop && shop.is_open === false;
 
   /* ---------- carregamento e persistência ---------- */
   useEffect(() => {
@@ -292,7 +309,7 @@ export default function Loja() {
   const cepDigits = f.cep.replace(/\D/g, '');
   const fee = quote && typeof quote === 'object' ? Number(quote.fee) || 0 : 0;
   const total = subtotal + fee;
-  const canSend = quote && typeof quote === 'object' && f.street.trim() && f.number.trim();
+  const canSend = !closed && quote && typeof quote === 'object' && f.street.trim() && f.number.trim();
   const maskCep = (v) => { const d = v.replace(/\D/g, '').slice(0, 8); return d.length > 5 ? d.slice(0, 5) + '-' + d.slice(5) : d; };
   const copy = async (t) => {
     try {
@@ -333,7 +350,9 @@ export default function Loja() {
   }, [cepState, f.city, f.bairro]);
 
   async function send(e) {
-    e.preventDefault(); setBusy(true); setErr('');
+    e.preventDefault();
+    if (hp) { closeAll(); setDone({ pay: f.payment, total, name: '' }); setCart({}); return; } // robô: finge que deu certo
+    setBusy(true); setErr('');
     const items = lines.map((v) => ({ variant_id: v.id, qty: cart[v.id] }));
     const address = `${f.street.trim()}, ${f.number.trim()}${f.comp.trim() ? ' - ' + f.comp.trim() : ''} - ${f.bairro ? f.bairro + ', ' : ''}${f.city}/${f.uf} - CEP ${maskCep(f.cep)}`;
     const { data, error } = await supabase.rpc('create_order', {
@@ -415,6 +434,12 @@ export default function Loja() {
       </header>
 
       <main className="shop">
+        {closed && (
+          <div className="closedbar" role="status">
+            <b>Estamos fechados no momento</b>
+            {shop.mode === 'auto' ? `Atendemos das ${shop.open_time} às ${shop.close_time}. Você pode olhar os produtos, mas só consegue finalizar o pedido quando abrirmos.` : 'Voltamos em breve. Você pode olhar os produtos, mas só consegue finalizar o pedido quando abrirmos.'}
+          </div>
+        )}
         <section className="banner" aria-label="Destaques">
           <div className="btrack" style={{ transform: `translateX(-${slide * 100}%)` }}>
             {BANNERS.map((b) => (
@@ -717,6 +742,7 @@ export default function Loja() {
                 </div>
 
                 <form onSubmit={send}>
+                  <input className="hp" type="text" name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" value={hp} onChange={(e) => setHp(e.target.value)} />
                   <input placeholder="Nome completo" autoComplete="name" value={f.name} onChange={upd('name')} required />
                   <input type="tel" inputMode="tel" placeholder="WhatsApp (com DDD)" autoComplete="tel" value={f.phone} onChange={upd('phone')} required />
                   <input
@@ -764,7 +790,7 @@ export default function Loja() {
                   </div>
 
                   {err && <p className="err">{err}</p>}
-                  <button className="cta" disabled={busy || !canSend}>{busy ? 'Enviando...' : canSend ? `Confirmar pedido · ${brl(total)}` : 'Informe o CEP para continuar'}</button>
+                  <button className="cta" disabled={busy || !canSend}>{busy ? 'Enviando...' : closed ? 'Loja fechada no momento' : canSend ? `Confirmar pedido · ${brl(total)}` : 'Informe o CEP para continuar'}</button>
                 </form>
               </>
             )}

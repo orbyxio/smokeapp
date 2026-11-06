@@ -89,8 +89,10 @@ function Pedidos({ onCount }) {
   const t = q.trim().toLowerCase();
   const shown = rows.filter((o) => {
     if (!t) {
-      if (filter === 'abertos' && !['novo', 'em_entrega'].includes(o.status)) return false;
-      if (filter === 'arquivados' && o.status !== 'entregue') return false;
+      // arquivado = entregue E pagamento confirmado; entregue sem pagamento confirmado continua em aberto
+      const feito = o.status === 'entregue' && o.payment_status !== 'pendente';
+      if (filter === 'abertos' && (o.status === 'cancelado' || feito)) return false;
+      if (filter === 'arquivados' && !feito) return false;
       if (filter === 'cancelados' && o.status !== 'cancelado') return false;
       return true;
     }

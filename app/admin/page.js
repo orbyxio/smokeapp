@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
 import { supabase, brl } from '@/lib/supabase';
-import { alertNewOrder, setSound, soundOn, setTitleCount } from '@/lib/alerts';
+import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
 const STORE = 'Smoke Euphoria';
 const LOW = 5; // abaixo ou igual a isso, o estoque entra no aviso de "estoque baixo"
@@ -30,7 +30,7 @@ function Pedidos({ onCount }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('todos');
   const [som, setSom] = useState(false);
-  const [flash, setFlash] = useState(0);
+  const [fresh, setFresh] = useState([]); // pedidos novos ainda não vistos
   const limRef = useRef(50);
   const lastMax = useRef(null);
   limRef.current = limit;
@@ -43,7 +43,8 @@ function Pedidos({ onCount }) {
     const max = list.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0);
     if (lastMax.current !== null && max > lastMax.current) {
       alertNewOrder();
-      setFlash((f) => f + 1);
+      const novosPedidos = list.filter((o) => Number(o.id) > lastMax.current).map((o) => ({ id: o.id, name: o.customer_name, total: o.total, prod: (o.order_items || []).map((i) => `${i.qty}x ${i.item_label}`).join(', ') }));
+      setFresh((f) => [...novosPedidos, ...f].slice(0, 5));
     }
     if (lastMax.current === null || max > lastMax.current) lastMax.current = max;
     const novos = list.filter((o) => o.status === 'novo').length;
@@ -52,12 +53,25 @@ function Pedidos({ onCount }) {
   };
 
   useEffect(() => {
-    setSom(soundOn());
+    const on = soundOn();
+    setSom(on);
+    armAudio();
+    keepAwake(on);
     load();
     const ch = supabase.channel('orders-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, load).subscribe();
     const t = setInterval(load, 30000);
-    return () => { supabase.removeChannel(ch); clearInterval(t); };
+    // ao voltar para o app (celular desbloqueado, outra aba), confere na hora
+    const back = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    window.addEventListener('pageshow', back);
+    return () => {
+      supabase.removeChannel(ch); clearInterval(t);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
+      window.removeEventListener('pageshow', back);
+    };
   }, []);
   useEffect(() => { load(); }, [limit]);
 
@@ -66,6 +80,7 @@ function Pedidos({ onCount }) {
     const on = !som;
     setSound(on);
     setSom(on);
+    keepAwake(on);
     if (on) alertNewOrder();
   }
 
@@ -85,6 +100,18 @@ function Pedidos({ onCount }) {
 
   return (
     <>
+      {fresh.length > 0 && (
+        <div className="card" role="alert" style={{ background: '#14101f', color: '#fff' }}>
+          {fresh.map((n) => (
+            <div key={n.id} style={{ padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,.15)' }}>
+              <div style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>🛒 Pedido novo – {n.prod || n.name}</div>
+              <div style={{ fontWeight: 800, fontSize: 24, color: '#4ade80', marginTop: 2 }}>{brl(n.total)}</div>
+              <div style={{ fontSize: 12, opacity: .7, color: '#fff' }}>#{n.id} · {n.name}</div>
+            </div>
+          ))}
+          <button type="button" style={{ marginTop: 10, background: '#fff', color: '#14101f' }} onClick={() => setFresh([])}>Ok, vi</button>
+        </div>
+      )}
       <div className="card">
         <div className="row" style={{ alignItems: 'center' }}>
           <b style={{ fontSize: 17 }}>Pedidos</b>
@@ -93,7 +120,6 @@ function Pedidos({ onCount }) {
           </button>
         </div>
         {!som && <p className="muted" style={help}>Toque no botão para tocar um aviso sempre que chegar um pedido. Mantenha esta tela aberta.</p>}
-        {flash > 0 && <p key={flash} className="tag" style={{ display: 'inline-block', marginTop: 8 }}>Chegou pedido novo</p>}
         <input type="search" placeholder="Buscar por nome, telefone, endereço ou número" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginTop: 10 }} />
         <Choice value={filter} onChange={setFilter} options={FILTERS} />
       </div>

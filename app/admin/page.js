@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
+import PushButton from '@/components/PushButton';
 import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
@@ -120,6 +121,7 @@ function Pedidos({ onCount }) {
           </button>
         </div>
         {!som && <p className="muted" style={help}>Toque no botão para tocar um aviso sempre que chegar um pedido. Mantenha esta tela aberta.</p>}
+        <PushButton kind="admin" />
         <input type="search" placeholder="Buscar por nome, telefone, endereço ou número" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginTop: 10 }} />
         <Choice value={filter} onChange={setFilter} options={FILTERS} />
       </div>

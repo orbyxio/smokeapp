@@ -1,7 +1,7 @@
 export const metadata = {
   title: 'Painel · Smoke Euphoria',
   manifest: '/pwa?m=admin',
-  appleWebApp: { capable: true, title: 'Painel', statusBarStyle: 'default' },
+  appleWebApp: { capable: true, title: 'Smoke', statusBarStyle: 'default' },
 };
 
 export default function AdminLayout({ children }) {

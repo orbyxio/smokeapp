@@ -36,6 +36,7 @@ export async function POST(request) {
   };
 
   let sent = 0;
+  const errors = [];
   await Promise.all((subs || []).map(async (s) => {
     try {
       await webpush.sendNotification(
@@ -45,10 +46,11 @@ export async function POST(request) {
       );
       sent++;
     } catch (e) {
-      if (e && (e.statusCode === 404 || e.statusCode === 410)) {
+      errors.push({ kind: s.kind, status: e && e.statusCode, msg: String((e && (e.body || e.message)) || e).slice(0, 200) });
+      if (e && e.statusCode === 410) {
         await db.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
       }
     }
   }));
-  return Response.json({ ok: true, sent });
+  return Response.json({ ok: true, sent, subs: (subs || []).length, errors });
 }

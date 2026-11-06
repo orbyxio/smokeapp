@@ -1,6 +1,15 @@
 import './globals.css';
 
-export const metadata = { title: 'Smoke Euphoria' };
+export const metadata = {
+  title: 'Smoke Euphoria',
+  applicationName: 'Smoke Euphoria',
+  manifest: '/pwa?m=loja',
+  icons: {
+    icon: [{ url: '/pwa?s=192', type: 'image/png' }],
+    apple: [{ url: '/pwa?s=180', sizes: '180x180', type: 'image/png' }],
+  },
+  appleWebApp: { capable: true, title: 'Smoke Euphoria', statusBarStyle: 'default' },
+};
 
 // viewportFit "cover" libera a área do entalhe/barra do iPhone (safe area)
 export const viewport = {

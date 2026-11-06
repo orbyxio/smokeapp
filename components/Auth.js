@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 
 // EDITE: troque pelo nome da sua empresa (aparece no rodapé da tela de login)
@@ -44,6 +44,27 @@ function Icon({ name }) {
       {ICONS[name]}
     </svg>
   );
+}
+
+// Corta a foto em quadrado e reduz (256px, JPEG) antes de enviar
+async function squarePhoto(file, size = 256) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('Não foi possível ler essa imagem'));
+      i.src = url;
+    });
+    const s = Math.min(img.width, img.height);
+    const c = document.createElement('canvas');
+    c.width = size; c.height = size;
+    c.getContext('2d').drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+    return await new Promise((res, rej) =>
+      c.toBlob((b) => (b ? res(b) : rej(new Error('Falha ao preparar a foto'))), 'image/jpeg', 0.86));
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 // **texto** vira negrito
@@ -94,6 +115,8 @@ export default function Auth({ role, children }) {
   const [pending, setPending] = useState(false);
   const [splash, setSplash] = useState(false);
   const [hl, setHl] = useState(0);
+  const [avBusy, setAvBusy] = useState(false);
+  const fileRef = useRef(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -135,6 +158,26 @@ export default function Auth({ role, children }) {
     const id = setInterval(() => setHl((h) => (h + 1) % 3), 2600);
     return () => clearInterval(id);
   }, [session]);
+
+  async function changeAvatar(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !session) return;
+    setAvBusy(true);
+    try {
+      const blob = await squarePhoto(file);
+      const path = `${session.user.id}.jpg`;
+      const up = await supabase.storage.from('avatares').upload(path, blob, { contentType: 'image/jpeg', upsert: true, cacheControl: '3600' });
+      if (up.error) throw up.error;
+      const url = supabase.storage.from('avatares').getPublicUrl(path).data.publicUrl + '?v=' + Date.now();
+      const r = await supabase.rpc('set_my_avatar', { p_url: url });
+      if (r.error) throw r.error;
+      setProfile((p) => ({ ...p, avatar_url: url }));
+    } catch (err) {
+      alert('Não consegui trocar a foto: ' + (err.message || err));
+    }
+    setAvBusy(false);
+  }
 
   async function login(e) {
     e.preventDefault();
@@ -239,7 +282,14 @@ export default function Auth({ role, children }) {
       )}
       <header className="bar">
         <div className="who">
-          <span className="av">{(profile.full_name || '?').trim().charAt(0)}</span>
+          <button type="button" className="av avbtn" onClick={() => fileRef.current && fileRef.current.click()}
+            aria-label="Trocar minha foto" title="Trocar minha foto" disabled={avBusy}>
+            {profile.avatar_url
+              ? <img src={profile.avatar_url} alt="" />
+              : (profile.full_name || '?').trim().charAt(0)}
+            <span className="avcam" aria-hidden="true">{avBusy ? '…' : '+'}</span>
+          </button>
+          <input ref={fileRef} type="file" accept="image/*" onChange={changeAvatar} style={{ display: 'none' }} />
           <b>{profile.full_name}</b>
         </div>
         <button className="ghost" onClick={() => supabase.auth.signOut()}>Sair</button>

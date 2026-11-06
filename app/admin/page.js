@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
-import PushButton from '@/components/PushButton';
 import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
@@ -29,7 +28,7 @@ function Pedidos({ onCount }) {
   const [rows, setRows] = useState([]);
   const [limit, setLimit] = useState(50);
   const [q, setQ] = useState('');
-  const [filter, setFilter] = useState('todos');
+  const [filter, setFilter] = useState('abertos');
   const [som, setSom] = useState(false);
   const [fresh, setFresh] = useState([]); // pedidos novos ainda não vistos
   const limRef = useRef(50);
@@ -85,13 +84,15 @@ function Pedidos({ onCount }) {
     if (on) alertNewOrder();
   }
 
-  const FILTERS = { todos: 'Todos', abertos: 'Em aberto', finalizados: 'Finalizados', cancelados: 'Cancelados' };
+  const FILTERS = { abertos: 'Em aberto', arquivados: 'Arquivados', cancelados: 'Cancelados', todos: 'Todos' };
   const t = q.trim().toLowerCase();
   const shown = rows.filter((o) => {
-    if (filter === 'abertos' && !['novo', 'em_entrega'].includes(o.status)) return false;
-    if (filter === 'finalizados' && (['novo', 'em_entrega', 'cancelado'].includes(o.status))) return false;
-    if (filter === 'cancelados' && o.status !== 'cancelado') return false;
-    if (!t) return true;
+    if (!t) {
+      if (filter === 'abertos' && !['novo', 'em_entrega'].includes(o.status)) return false;
+      if (filter === 'arquivados' && o.status !== 'entregue') return false;
+      if (filter === 'cancelados' && o.status !== 'cancelado') return false;
+      return true;
+    }
     const digits = t.replace(/\D/g, '');
     return String(o.id) === t.replace('#', '')
       || String(o.customer_name || '').toLowerCase().includes(t)
@@ -121,7 +122,6 @@ function Pedidos({ onCount }) {
           </button>
         </div>
         {!som && <p className="muted" style={help}>Toque no botão para tocar um aviso sempre que chegar um pedido. Mantenha esta tela aberta.</p>}
-        <PushButton kind="admin" />
         <input type="search" placeholder="Buscar por nome, telefone, endereço ou número" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginTop: 10 }} />
         <Choice value={filter} onChange={setFilter} options={FILTERS} />
       </div>

@@ -293,7 +293,7 @@ a.btn.ghost {
 /* ---------- Abas e etiquetas ---------- */
 .tabs {
   display: flex;
-  gap: 8px;
+  gap: 3px;
   margin: 12px 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -304,9 +304,12 @@ a.btn.ghost {
 }
 .tabs > * {
   flex: 1 1 auto;
-  padding-left: 10px;
-  padding-right: 10px;
-  font-size: 15px;
+  margin: 0;
+  padding-left: 5px;
+  padding-right: 5px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
 
 .tag {
@@ -1849,4 +1852,41 @@ a.dr-item {
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* ---------- Avisos do admin ---------- */
+.tabdot {
+  display: inline-block;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 99px;
+  background: #ff2fd0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 18px;
+  text-align: center;
+}
+.closedbar {
+  margin: 10px 0 12px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: #14101f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.closedbar b {
+  display: block;
+  font-size: 15px;
+}
+.hp {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  opacity: 0 !important;
 }

@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
-import PushButton from '@/components/PushButton';
+import AlertSettings from '@/components/AlertSettings';
 import { supabase, brl } from '@/lib/supabase';
-import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
+import { alertNewOrder, armAudio, keepAwake, soundOn, setTitleCount } from '@/lib/alerts';
 
 const STORE = 'Smoke Euphoria';
 const LOW = 5; // abaixo ou igual a isso, o estoque entra no aviso de "estoque baixo"
@@ -30,7 +30,6 @@ function Pedidos({ onCount }) {
   const [limit, setLimit] = useState(50);
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState('abertos');
-  const [som, setSom] = useState(false);
   const [fresh, setFresh] = useState([]); // pedidos novos ainda não vistos
   const limRef = useRef(50);
   const lastMax = useRef(null);
@@ -54,10 +53,8 @@ function Pedidos({ onCount }) {
   };
 
   useEffect(() => {
-    const on = soundOn();
-    setSom(on);
     armAudio();
-    keepAwake(on);
+    keepAwake(soundOn());
     load();
     const ch = supabase.channel('orders-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, load).subscribe();
@@ -77,13 +74,6 @@ function Pedidos({ onCount }) {
   useEffect(() => { load(); }, [limit]);
 
   const act = async (fn, id) => { const { error } = await supabase.rpc(fn, { p_id: id }); if (error) alert(error.message); load(); };
-  function toggleSom() {
-    const on = !som;
-    setSound(on);
-    setSom(on);
-    keepAwake(on);
-    if (on) alertNewOrder();
-  }
 
   const FILTERS = { abertos: 'Em aberto', arquivados: 'Arquivados', cancelados: 'Cancelados', todos: 'Todos' };
   const t = q.trim().toLowerCase();
@@ -118,14 +108,7 @@ function Pedidos({ onCount }) {
         </div>
       )}
       <div className="card">
-        <div className="row" style={{ alignItems: 'center' }}>
-          <b style={{ fontSize: 17 }}>Pedidos</b>
-          <button type="button" className={som ? '' : 'ghost'} onClick={toggleSom}>
-            {som ? 'Som ligado' : 'Ativar som de pedido novo'}
-          </button>
-        </div>
-        {!som && <p className="muted" style={help}>Toque no botão para tocar um aviso sempre que chegar um pedido. Mantenha esta tela aberta.</p>}
-        <PushButton kind="admin" />
+        <b style={{ fontSize: 17 }}>Pedidos</b>
         <input type="search" placeholder="Buscar por nome, telefone, endereço ou número" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginTop: 10 }} />
         <Choice value={filter} onChange={setFilter} options={FILTERS} />
       </div>
@@ -1021,6 +1004,7 @@ function LojaConfig() {
 function Ajustes() {
   return (
     <>
+      <AlertSettings kind="admin" />
       <LojaConfig />
       <Locais />
     </>

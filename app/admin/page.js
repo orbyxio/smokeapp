@@ -2,30 +2,125 @@
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
 import { supabase, brl } from '@/lib/supabase';
+import { alertNewOrder, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
+const STORE = 'Smoke Euphoria';
+const LOW = 5; // abaixo ou igual a isso, o estoque entra no aviso de "estoque baixo"
 const PAY = { pix: 'Pix', card: 'Cartão', cash: 'Dinheiro' };
+const STATUS_PED = { novo: 'Novo', em_entrega: 'Em entrega', entregue: 'Entregue', cancelado: 'Cancelado' };
 
-function Pedidos() {
+const BR = 'America/Sao_Paulo';
+const dtFull = (v) => {
+  try {
+    return v ? new Date(v).toLocaleString('pt-BR', { timeZone: BR, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+  } catch { return ''; }
+};
+
+const waLink = (o) => {
+  const d = String(o.customer_phone || '').replace(/\D/g, '');
+  if (!d) return null;
+  const num = d.length <= 11 ? '55' + d : d;
+  const nome = String(o.customer_name || '').trim().split(' ')[0];
+  return `https://wa.me/${num}?text=${encodeURIComponent(`Oi ${nome}! Aqui é da ${STORE}, sobre o seu pedido.`)}`;
+};
+
+function Pedidos({ onCount }) {
   const [rows, setRows] = useState([]);
-  const load = () => supabase.from('orders').select('*, order_items(item_label, qty)')
-    .order('id', { ascending: false }).limit(50).then(({ data }) => setRows(data || []));
+  const [limit, setLimit] = useState(50);
+  const [q, setQ] = useState('');
+  const [filter, setFilter] = useState('todos');
+  const [som, setSom] = useState(false);
+  const [flash, setFlash] = useState(0);
+  const limRef = useRef(50);
+  const lastMax = useRef(null);
+  limRef.current = limit;
+
+  const load = async () => {
+    const { data } = await supabase.from('orders').select('*, order_items(item_label, qty)')
+      .order('id', { ascending: false }).limit(limRef.current);
+    const list = data || [];
+    setRows(list);
+    const max = list.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0);
+    if (lastMax.current !== null && max > lastMax.current) {
+      alertNewOrder();
+      setFlash((f) => f + 1);
+    }
+    if (lastMax.current === null || max > lastMax.current) lastMax.current = max;
+    const novos = list.filter((o) => o.status === 'novo').length;
+    if (onCount) onCount(novos);
+    setTitleCount(novos, 'Painel');
+  };
+
   useEffect(() => {
+    setSom(soundOn());
     load();
     const ch = supabase.channel('orders-live')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, load).subscribe();
-    return () => supabase.removeChannel(ch);
+    const t = setInterval(load, 30000);
+    return () => { supabase.removeChannel(ch); clearInterval(t); };
   }, []);
+  useEffect(() => { load(); }, [limit]);
+
   const act = async (fn, id) => { const { error } = await supabase.rpc(fn, { p_id: id }); if (error) alert(error.message); load(); };
-  return rows.map((o) => (
-    <div className="card" key={o.id}>
-      <div className="row"><b>#{o.id} · {o.customer_name}</b><span className="tag">{o.status}</span></div>
-      <p>{o.order_items.map((i) => `${i.qty}x ${i.item_label}`).join(', ')}</p>
-      <p className="muted">{o.address} · {o.customer_phone}</p>
-      <p>{brl(o.total)}{o.zone_name ? ` (entrega ${brl(o.delivery_fee)})` : ''} · {PAY[o.payment_method]} · {o.payment_status}</p>
-      {o.payment_status === 'pendente' && o.status !== 'cancelado' && <button onClick={() => act('mark_paid', o.id)}>Confirmar pagamento</button>}{' '}
-      {['novo', 'em_entrega'].includes(o.status) && <button className="ghost" onClick={() => confirm('Cancelar pedido?') && act('cancel_order', o.id)}>Cancelar</button>}
-    </div>
-  ));
+  function toggleSom() {
+    const on = !som;
+    setSound(on);
+    setSom(on);
+    if (on) alertNewOrder();
+  }
+
+  const FILTERS = { todos: 'Todos', abertos: 'Em aberto', finalizados: 'Finalizados', cancelados: 'Cancelados' };
+  const t = q.trim().toLowerCase();
+  const shown = rows.filter((o) => {
+    if (filter === 'abertos' && !['novo', 'em_entrega'].includes(o.status)) return false;
+    if (filter === 'finalizados' && (['novo', 'em_entrega', 'cancelado'].includes(o.status))) return false;
+    if (filter === 'cancelados' && o.status !== 'cancelado') return false;
+    if (!t) return true;
+    const digits = t.replace(/\D/g, '');
+    return String(o.id) === t.replace('#', '')
+      || String(o.customer_name || '').toLowerCase().includes(t)
+      || String(o.address || '').toLowerCase().includes(t)
+      || (digits.length >= 3 && String(o.customer_phone || '').replace(/\D/g, '').includes(digits));
+  });
+
+  return (
+    <>
+      <div className="card">
+        <div className="row" style={{ alignItems: 'center' }}>
+          <b style={{ fontSize: 17 }}>Pedidos</b>
+          <button type="button" className={som ? '' : 'ghost'} onClick={toggleSom}>
+            {som ? 'Som ligado' : 'Ativar som de pedido novo'}
+          </button>
+        </div>
+        {!som && <p className="muted" style={help}>Toque no botão para tocar um aviso sempre que chegar um pedido. Mantenha esta tela aberta.</p>}
+        {flash > 0 && <p key={flash} className="tag" style={{ display: 'inline-block', marginTop: 8 }}>Chegou pedido novo</p>}
+        <input type="search" placeholder="Buscar por nome, telefone, endereço ou número" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginTop: 10 }} />
+        <Choice value={filter} onChange={setFilter} options={FILTERS} />
+      </div>
+
+      {shown.length === 0 && <div className="card"><p className="muted">Nenhum pedido encontrado.</p></div>}
+      {shown.map((o) => {
+        const wa = waLink(o);
+        return (
+          <div className="card" key={o.id} style={o.status === 'novo' ? { boxShadow: 'inset 4px 0 0 #8f3bff' } : undefined}>
+            <div className="row"><b>#{o.id} · {o.customer_name}</b><span className="tag">{STATUS_PED[o.status] || o.status}</span></div>
+            <p className="muted" style={{ margin: '2px 0' }}>{dtFull(o.created_at)}</p>
+            <p>{(o.order_items || []).map((i) => `${i.qty}x ${i.item_label}`).join(', ')}</p>
+            <p className="muted">{o.address} · {o.customer_phone}</p>
+            <p>{brl(o.total)}{o.zone_name ? ` (entrega ${brl(o.delivery_fee)})` : ''} · {PAY[o.payment_method]} · {o.payment_status === 'pendente' ? 'pagamento pendente' : o.payment_status}</p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              {o.payment_status === 'pendente' && o.status !== 'cancelado' && <button onClick={() => act('mark_paid', o.id)}>Confirmar pagamento</button>}
+              {wa && <a className="btn ghost" href={wa} target="_blank" rel="noreferrer">WhatsApp do cliente</a>}
+              {['novo', 'em_entrega'].includes(o.status) && <button className="ghost" onClick={() => confirm('Cancelar pedido?') && act('cancel_order', o.id)}>Cancelar</button>}
+            </div>
+          </div>
+        );
+      })}
+      {rows.length >= limit && (
+        <button type="button" className="ghost" onClick={() => setLimit(limit + 50)}>Ver pedidos mais antigos</button>
+      )}
+    </>
+  );
 }
 
 /* ---------- Fotos dos produtos (Supabase Storage, bucket "produtos") ---------- */
@@ -92,7 +187,7 @@ function VariantRow({ v, reload }) {
   }
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', ...line }}>
-      <span style={{ minWidth: 0 }}><b>{v.label}</b><br /><span className="muted">{brl(v.price)}</span></span>
+      <span style={{ minWidth: 0 }}><b>{v.label}</b><br /><span className="muted">{brl(v.price)}</span>{v.stock <= LOW && <span className="tag" style={{ marginLeft: 6 }}>{v.stock <= 0 ? 'Zerado' : 'Baixo'}</span>}</span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <input type="number" min="0" value={val} aria-label={`Estoque de ${v.label}`}
           onChange={(e) => setVal(e.target.value)} style={{ width: 84 }} />
@@ -259,6 +354,10 @@ function Estoque() {
   useEffect(() => { load(); }, []);
 
   const brands = [...new Set(prods.map((p) => p.brand).filter(Boolean))];
+  const low = prods
+    .filter((p) => p.active !== false)
+    .flatMap((p) => (p.variants || []).filter((v) => Number(v.stock) <= LOW).map((v) => ({ p, v })))
+    .sort((x, y) => x.v.stock - y.v.stock);
   const shown = prods.filter((p) => {
     const t = q.trim().toLowerCase();
     return !t || p.name.toLowerCase().includes(t) || (p.brand || '').toLowerCase().includes(t);
@@ -306,6 +405,19 @@ function Estoque() {
   return (
     <>
       <datalist id="marcas">{brands.map((b) => <option key={b} value={b} />)}</datalist>
+
+      {low.length > 0 && (
+        <div className="card">
+          <b style={{ fontSize: 17 }}>Estoque baixo ({low.length})</b>
+          <p className="muted" style={help}>Sabores com {LOW} unidades ou menos. Hora de repor.</p>
+          {low.map(({ p, v }) => (
+            <div key={v.id} className="row" style={{ ...line, padding: '8px 0' }}>
+              <span>{p.name} · {v.label}</span>
+              <b style={{ color: '#d6204b' }}>{v.stock <= 0 ? 'Zerado' : `${v.stock} restantes`}</b>
+            </div>
+          ))}
+        </div>
+      )}
 
       <form className="card" onSubmit={add}>
         <b style={{ fontSize: 17 }}>Cadastrar produto novo</b>
@@ -589,19 +701,320 @@ function Locais() {
   );
 }
 
+/* ---------- Vendas (relatório por período) ---------- */
+const ymdToday = () => new Date().toLocaleDateString('en-CA', { timeZone: BR });
+const addDays = (ymd, n) => {
+  const [y, m, d] = ymd.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+const dayOf = (iso) => new Date(iso).toLocaleDateString('en-CA', { timeZone: BR });
+const fmtDay = (ymd) => ymd.split('-').reverse().slice(0, 2).join('/');
+const startOf = (ymd) => new Date(`${ymd}T00:00:00-03:00`).toISOString();
+
+const PRESETS = { hoje: 'Hoje', ontem: 'Ontem', d7: '7 dias', d14: '14 dias', d30: '30 dias', custom: 'Período' };
+function rangeFor(key, from, to) {
+  const t = ymdToday();
+  if (key === 'hoje') return [t, t];
+  if (key === 'ontem') return [addDays(t, -1), addDays(t, -1)];
+  if (key === 'd7') return [addDays(t, -6), t];
+  if (key === 'd14') return [addDays(t, -13), t];
+  if (key === 'd30') return [addDays(t, -29), t];
+  return [from || t, to || t];
+}
+
+function Stat({ label, value, sub }) {
+  return (
+    <div className="card" style={{ margin: 0, padding: 14 }}>
+      <span className="muted" style={{ fontSize: 13 }}>{label}</span>
+      <div style={{ fontSize: 22, fontWeight: 800, lineHeight: 1.2 }}>{value}</div>
+      {sub && <span className="muted" style={{ fontSize: 12 }}>{sub}</span>}
+    </div>
+  );
+}
+
+// Lista com barra proporcional (para "mais vendidos", "por local" etc.)
+function Rank({ items, empty = 'Sem dados no período.' }) {
+  const max = Math.max(1, ...items.map((i) => i.value));
+  if (!items.length) return <p className="muted">{empty}</p>;
+  return items.map((i) => (
+    <div key={i.key} style={{ padding: '8px 0', ...line }}>
+      <div className="row"><span style={{ minWidth: 0 }}>{i.label}</span><b style={{ whiteSpace: 'nowrap' }}>{i.right}</b></div>
+      {i.sub && <span className="muted" style={{ fontSize: 12 }}>{i.sub}</span>}
+      <div style={{ height: 5, borderRadius: 9, background: 'rgba(20,16,31,.07)', marginTop: 4 }}>
+        <div style={{ height: 5, borderRadius: 9, width: `${Math.max(3, (i.value / max) * 100)}%`, background: 'linear-gradient(90deg,#1a9bff,#8f3bff,#ff2fd0)' }} />
+      </div>
+    </div>
+  ));
+}
+
+const csvCell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+const num = (n) => String(Number(n || 0).toFixed(2)).replace('.', ',');
+
+function Vendas() {
+  const [key, setKey] = useState('hoje');
+  const t0 = ymdToday();
+  const [from, setFrom] = useState(t0);
+  const [to, setTo] = useState(t0);
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState('');
+  const [allCust, setAllCust] = useState(false);
+  const [r0, r1] = rangeFor(key, from, to);
+
+  const load = async () => {
+    if (r0 > r1) { setRows([]); setErr('A data inicial é depois da final.'); setLoading(false); return; }
+    setLoading(true); setErr('');
+    const { data, error } = await supabase.from('orders')
+      .select('*, order_items(item_label, qty, unit_price)')
+      .gte('created_at', startOf(r0)).lt('created_at', startOf(addDays(r1, 1)))
+      .order('created_at', { ascending: true }).limit(1000);
+    if (error) setErr(error.message);
+    setRows(data || []);
+    setLoading(false);
+  };
+  useEffect(() => { load(); }, [r0, r1]);
+
+  const ok = rows.filter((o) => o.status !== 'cancelado');
+  const canceled = rows.length - ok.length;
+  const sum = (arr, f) => arr.reduce((t, o) => t + Number(f(o) || 0), 0);
+  const total = sum(ok, (o) => o.total);
+  const entrega = sum(ok, (o) => o.delivery_fee);
+  const recebido = sum(ok.filter((o) => o.payment_status !== 'pendente'), (o) => o.total);
+  const areceber = total - recebido;
+  const itens = ok.reduce((t, o) => t + (o.order_items || []).reduce((a, i) => a + Number(i.qty || 0), 0), 0);
+  const ticket = ok.length ? total / ok.length : 0;
+
+  const group = (arr, keyFn) => {
+    const m = new Map();
+    arr.forEach((o) => { const k = keyFn(o); const g = m.get(k) || { n: 0, total: 0 }; g.n += 1; g.total += Number(o.total || 0); m.set(k, g); });
+    return m;
+  };
+  const byPay = [...group(ok, (o) => o.payment_method).entries()].map(([k, g]) => ({
+    key: k, label: PAY[k] || k, right: brl(g.total), sub: `${g.n} pedido${g.n > 1 ? 's' : ''}`, value: g.total,
+  })).sort((a, b) => b.value - a.value);
+  const byZone = [...group(ok, (o) => o.zone_name || 'Sem local').entries()].map(([k, g]) => ({
+    key: k, label: k, right: brl(g.total), sub: `${g.n} pedido${g.n > 1 ? 's' : ''}`, value: g.total,
+  })).sort((a, b) => b.value - a.value);
+
+  const items = new Map();
+  ok.forEach((o) => (o.order_items || []).forEach((i) => {
+    const g = items.get(i.item_label) || { qty: 0, total: 0 };
+    g.qty += Number(i.qty || 0); g.total += Number(i.qty || 0) * Number(i.unit_price || 0);
+    items.set(i.item_label, g);
+  }));
+  const byItem = [...items.entries()].map(([k, g]) => ({
+    key: k, label: k, right: `${g.qty} un.`, sub: brl(g.total), value: g.qty,
+  })).sort((a, b) => b.value - a.value).slice(0, 10);
+
+  const cust = new Map();
+  ok.forEach((o) => {
+    const d = String(o.customer_phone || '').replace(/\D/g, '').slice(-11);
+    const k = d || String(o.customer_name || '').toLowerCase();
+    const g = cust.get(k) || { name: o.customer_name, phone: o.customer_phone, n: 0, total: 0, last: o.created_at };
+    g.n += 1; g.total += Number(o.total || 0); g.name = o.customer_name; g.last = o.created_at;
+    cust.set(k, g);
+  });
+  const custList = [...cust.entries()].map(([k, g]) => ({ k, ...g })).sort((a, b) => b.total - a.total);
+  const custShown = allCust ? custList : custList.slice(0, 10);
+
+  // gráfico por dia (só até 31 dias)
+  const days = [];
+  for (let d = r0; d <= r1 && days.length < 62; d = addDays(d, 1)) days.push(d);
+  const perDay = new Map();
+  ok.forEach((o) => { const d = dayOf(o.created_at); perDay.set(d, (perDay.get(d) || 0) + Number(o.total || 0)); });
+  const maxDay = Math.max(1, ...days.map((d) => perDay.get(d) || 0));
+  const showChart = days.length > 1 && days.length <= 31;
+
+  function exportCsv() {
+    const head = ['Pedido', 'Data', 'Cliente', 'Telefone', 'Endereço', 'Local', 'Itens', 'Total', 'Entrega', 'Pagamento', 'Situação do pagamento', 'Status'];
+    const lines = rows.map((o) => [
+      o.id, dtFull(o.created_at), o.customer_name, o.customer_phone, o.address, o.zone_name || '',
+      (o.order_items || []).map((i) => `${i.qty}x ${i.item_label}`).join(' | '),
+      num(o.total), num(o.delivery_fee), PAY[o.payment_method] || o.payment_method, o.payment_status, STATUS_PED[o.status] || o.status,
+    ].map(csvCell).join(';'));
+    const blob = new Blob(['﻿' + [head.map(csvCell).join(';'), ...lines].join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `vendas-${r0}_a_${r1}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }
+
+  return (
+    <>
+      <div className="card">
+        <b style={{ fontSize: 17 }}>Vendas</b>
+        <p className="muted" style={help}>Escolha o período. Pedidos cancelados não entram na soma.</p>
+        <Choice value={key} onChange={setKey} options={PRESETS} />
+        {key === 'custom' && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 8 }}>
+            <div><span style={lab}>De</span><input type="date" value={from} max={to} onChange={(e) => setFrom(e.target.value)} /></div>
+            <div><span style={lab}>Até</span><input type="date" value={to} min={from} max={t0} onChange={(e) => setTo(e.target.value)} /></div>
+          </div>
+        )}
+        <p className="muted" style={{ ...help, marginTop: 10 }}>
+          {r0 === r1 ? fmtDay(r0) : `${fmtDay(r0)} a ${fmtDay(r1)}`} · {ok.length} pedido{ok.length === 1 ? '' : 's'}
+          {canceled > 0 ? ` · ${canceled} cancelado${canceled > 1 ? 's' : ''}` : ''}
+          {loading ? ' · carregando...' : ''}
+        </p>
+        {err && <p className="err">{err}</p>}
+        {rows.length >= 1000 && <p className="err">Mostrando os primeiros 1000 pedidos. Escolha um período menor.</p>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="ghost" onClick={load}>Atualizar</button>
+          <button type="button" className="ghost" disabled={!rows.length} onClick={exportCsv}>Baixar planilha</button>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, margin: '12px 0' }}>
+        <Stat label="Faturamento" value={brl(total)} />
+        <Stat label="Pedidos" value={ok.length} sub={`${itens} ${itens === 1 ? 'item' : 'itens'}`} />
+        <Stat label="Ticket médio" value={brl(ticket)} />
+        <Stat label="Entregas cobradas" value={brl(entrega)} sub={`produtos: ${brl(total - entrega)}`} />
+        <Stat label="Já recebido" value={brl(recebido)} />
+        <Stat label="A receber" value={brl(areceber)} />
+      </div>
+
+      {showChart && (
+        <div className="card">
+          <b style={{ fontSize: 17 }}>Por dia</b>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 3, height: 110, marginTop: 10 }}>
+            {days.map((d) => {
+              const v = perDay.get(d) || 0;
+              return <div key={d} title={`${fmtDay(d)}: ${brl(v)}`} style={{ flex: 1, height: `${Math.max(3, (v / maxDay) * 100)}%`, borderRadius: 4, background: v ? 'linear-gradient(180deg,#8f3bff,#1a9bff)' : 'rgba(20,16,31,.10)' }} />;
+            })}
+          </div>
+          <div className="row muted" style={{ fontSize: 12, marginTop: 4 }}><span>{fmtDay(days[0])}</span><span>{fmtDay(days[days.length - 1])}</span></div>
+        </div>
+      )}
+
+      <div className="card"><b style={{ fontSize: 17 }}>Mais vendidos</b><Rank items={byItem} /></div>
+      <div className="card"><b style={{ fontSize: 17 }}>Forma de pagamento</b><Rank items={byPay} /></div>
+      <div className="card"><b style={{ fontSize: 17 }}>Por local de entrega</b><Rank items={byZone} /></div>
+
+      <div className="card">
+        <b style={{ fontSize: 17 }}>Clientes ({custList.length})</b>
+        <p className="muted" style={help}>Quem mais comprou no período.</p>
+        {custList.length === 0 && <p className="muted">Sem dados no período.</p>}
+        {custShown.map((c) => {
+          const wa = waLink({ customer_phone: c.phone, customer_name: c.name });
+          return (
+            <div key={c.k} style={{ padding: '10px 0', ...line }}>
+              <div className="row"><b>{c.name}</b><b>{brl(c.total)}</b></div>
+              <span className="muted" style={{ fontSize: 12 }}>{c.n} pedido{c.n > 1 ? 's' : ''} · último em {dtFull(c.last)}</span>
+              {wa && <div style={{ marginTop: 6 }}><a className="btn ghost" href={wa} target="_blank" rel="noreferrer">Chamar no WhatsApp</a></div>}
+            </div>
+          );
+        })}
+        {custList.length > 10 && (
+          <button type="button" className="ghost" style={{ marginTop: 8 }} onClick={() => setAllCust(!allCust)}>
+            {allCust ? 'Mostrar menos' : `Ver todos (${custList.length})`}
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------- Ajustes da loja: aberta/fechada e horário ---------- */
+const DIAS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+function LojaConfig() {
+  const [c, setC] = useState(null);
+  const [err, setErr] = useState('');
+  const [now, setNow] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const load = async () => {
+    const { data, error } = await supabase.from('store_config').select('*').eq('id', 1).single();
+    if (error) { setErr(error.message); return; }
+    setErr('');
+    setC({ mode: data.mode, open_time: String(data.open_time).slice(0, 5), close_time: String(data.close_time).slice(0, 5), days: data.days || [] });
+    const st = await supabase.rpc('store_status');
+    const row = Array.isArray(st.data) ? st.data[0] : st.data;
+    if (row) setNow(row.is_open);
+  };
+  useEffect(() => { load(); }, []);
+
+  async function save() {
+    setBusy(true); setSaved(false);
+    const { error } = await supabase.from('store_config')
+      .update({ mode: c.mode, open_time: c.open_time, close_time: c.close_time, days: c.days }).eq('id', 1);
+    setBusy(false);
+    if (error) return alert('Não consegui salvar: ' + error.message);
+    setSaved(true);
+    load();
+  }
+  const toggleDay = (d) => setC({ ...c, days: c.days.includes(d) ? c.days.filter((x) => x !== d) : [...c.days, d].sort() });
+
+  if (err) {
+    return (
+      <div className="card">
+        <b>Falta criar a configuração da loja</b>
+        <p className="muted" style={help}>Rode o arquivo tudo.sql no Supabase e volte aqui. ({err})</p>
+      </div>
+    );
+  }
+  if (!c) return <div className="card"><p className="muted">Carregando...</p></div>;
+
+  return (
+    <div className="card">
+      <b style={{ fontSize: 17 }}>Loja aberta ou fechada</b>
+      {now !== null && (
+        <p style={{ margin: '6px 0' }}>Agora a loja está <b style={{ color: now ? '#12a150' : '#d6204b' }}>{now ? 'ABERTA' : 'FECHADA'}</b>.</p>
+      )}
+      <p className="muted" style={help}>Fechada: o cliente vê o aviso e não consegue finalizar pedido. Ele ainda pode olhar os produtos.</p>
+      <Choice value={c.mode} onChange={(mode) => setC({ ...c, mode })} options={{ auto: 'Pelo horário', aberta: 'Sempre aberta', fechada: 'Fechada agora' }} />
+      {c.mode === 'auto' && (
+        <>
+          <span style={lab}>Horário de atendimento</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div><span className="muted" style={{ fontSize: 12 }}>Abre às</span><input type="time" value={c.open_time} onChange={(e) => setC({ ...c, open_time: e.target.value })} /></div>
+            <div><span className="muted" style={{ fontSize: 12 }}>Fecha às</span><input type="time" value={c.close_time} onChange={(e) => setC({ ...c, close_time: e.target.value })} /></div>
+          </div>
+          <span style={lab}>Dias em que atende</span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {DIAS.map((n, d) => (
+              <button key={d} type="button" className={c.days.includes(d) ? '' : 'ghost'} onClick={() => toggleDay(d)}>{n}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <button style={{ marginTop: 14 }} disabled={busy} onClick={save}>{busy ? 'Salvando...' : 'Salvar'}</button>
+      {saved && <span className="muted" style={{ marginLeft: 10 }}>Salvo.</span>}
+    </div>
+  );
+}
+
+function Ajustes() {
+  return (
+    <>
+      <LojaConfig />
+      <Locais />
+    </>
+  );
+}
+
 export default function Admin() {
   const [tab, setTab] = useState('pedidos');
+  const [novos, setNovos] = useState(0);
+  const TABS = ['pedidos', 'estoque', 'caixa', 'vendas', 'ajustes'];
   return (
     <Auth role="admin">
       <div className="tabs">
-        {['pedidos', 'estoque', 'caixa', 'locais'].map((t) => (
-          <button key={t} className={tab === t ? '' : 'ghost'} onClick={() => setTab(t)}>{t}</button>
+        {TABS.map((t) => (
+          <button key={t} className={tab === t ? '' : 'ghost'} onClick={() => setTab(t)}>
+            {t}
+            {t === 'pedidos' && novos > 0 && <span className="tabdot">{novos}</span>}
+          </button>
         ))}
       </div>
-      {tab === 'pedidos' && <Pedidos />}
+      {/* Pedidos fica sempre carregado para avisar de pedido novo mesmo em outra aba */}
+      <div style={{ display: tab === 'pedidos' ? 'block' : 'none' }}><Pedidos onCount={setNovos} /></div>
       {tab === 'estoque' && <Estoque />}
       {tab === 'caixa' && <Caixa />}
-      {tab === 'locais' && <Locais />}
+      {tab === 'vendas' && <Vendas />}
+      {tab === 'ajustes' && <Ajustes />}
     </Auth>
   );
 }

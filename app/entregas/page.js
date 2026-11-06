@@ -1,14 +1,14 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
-import PushButton from '@/components/PushButton';
+import AlertSettings from '@/components/AlertSettings';
 import { supabase, brl } from '@/lib/supabase';
-import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
+import { alertNewOrder, armAudio, keepAwake, soundOn, setTitleCount } from '@/lib/alerts';
 
 function Entregas() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
-  const [som, setSom] = useState(false);
+  const [ajustes, setAjustes] = useState(false);
   const seen = useRef(null); // ids de pedidos novos já vistos
   const [fresh, setFresh] = useState([]);
   const [aba, setAba] = useState('abertos');
@@ -33,10 +33,8 @@ function Entregas() {
   };
 
   useEffect(() => {
-    const on = soundOn();
-    setSom(on);
     armAudio();
-    keepAwake(on);
+    keepAwake(soundOn());
     load();
     const t = setInterval(load, 15000);
     // ao voltar para o app, confere na hora
@@ -53,13 +51,6 @@ function Entregas() {
   }, []);
 
   const act = async (fn, id) => { const { error } = await supabase.rpc(fn, { p_id: id }); if (error) alert(error.message); load(); };
-  function toggleSom() {
-    const on = !som;
-    setSound(on);
-    setSom(on);
-    keepAwake(on);
-    if (on) alertNewOrder();
-  }
 
   // novos primeiro; dentro de cada grupo, o mais recente em cima
   const ordem = { novo: 0, em_entrega: 1 };
@@ -78,14 +69,10 @@ function Entregas() {
         </div>
       )}
       <div className="card"><h2>Você recebe hoje: {brl(total)}</h2></div>
-      <div className="card">
-        <div className="row" style={{ alignItems: 'center' }}>
-          <b>Aviso de entrega nova</b>
-          <button type="button" className={som ? '' : 'ghost'} onClick={toggleSom}>{som ? 'Som ligado' : 'Ativar som'}</button>
-        </div>
-        {!som && <p className="muted" style={{ margin: '6px 0 0' }}>Toque em Ativar som para tocar um aviso quando chegar entrega. Deixe esta tela aberta.</p>}
-        <PushButton kind="courier" />
+      <div className="row" style={{ margin: '0 0 10px', justifyContent: 'flex-start' }}>
+        <button type="button" className="ghost" onClick={() => setAjustes((v) => !v)}>{ajustes ? 'Fechar ajustes' : 'Ajustes'}</button>
       </div>
+      {ajustes && <AlertSettings kind="courier" />}
       <div className="row" style={{ gap: 8, margin: '4px 0 10px', justifyContent: 'flex-start' }}>
         <button type="button" className={aba === 'abertos' ? '' : 'ghost'} onClick={() => setAba('abertos')}>Em aberto ({abertos.length})</button>
         <button type="button" className={aba === 'arquivados' ? '' : 'ghost'} onClick={() => setAba('arquivados')}>Arquivados ({arquivados.length})</button>

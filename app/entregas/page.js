@@ -1,7 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
-import PushButton from '@/components/PushButton';
 import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
@@ -11,6 +10,7 @@ function Entregas() {
   const [som, setSom] = useState(false);
   const seen = useRef(null); // ids de pedidos novos já vistos
   const [fresh, setFresh] = useState([]);
+  const [aba, setAba] = useState('abertos');
 
   const load = async () => {
     const a = await supabase.rpc('courier_orders');
@@ -60,6 +60,13 @@ function Entregas() {
     if (on) alertNewOrder();
   }
 
+  // novos primeiro; dentro de cada grupo, o mais recente em cima
+  const ordem = { novo: 0, em_entrega: 1 };
+  const abertos = rows.filter((o) => o.status === 'novo' || o.status === 'em_entrega')
+    .sort((a, b) => (ordem[a.status] - ordem[b.status]) || (b.id - a.id));
+  const arquivados = rows.filter((o) => o.status === 'entregue').sort((a, b) => b.id - a.id);
+  const shown = aba === 'abertos' ? abertos : arquivados;
+
   return (
     <>
       {fresh.length > 0 && (
@@ -76,10 +83,13 @@ function Entregas() {
           <button type="button" className={som ? '' : 'ghost'} onClick={toggleSom}>{som ? 'Som ligado' : 'Ativar som'}</button>
         </div>
         {!som && <p className="muted" style={{ margin: '6px 0 0' }}>Toque em Ativar som para tocar um aviso quando chegar entrega. Deixe esta tela aberta.</p>}
-        <PushButton kind="courier" />
       </div>
-      {rows.length === 0 && <p className="muted">Nenhum pedido no momento.</p>}
-      {rows.map((o) => (
+      <div className="row" style={{ gap: 8, margin: '4px 0 10px', justifyContent: 'flex-start' }}>
+        <button type="button" className={aba === 'abertos' ? '' : 'ghost'} onClick={() => setAba('abertos')}>Em aberto ({abertos.length})</button>
+        <button type="button" className={aba === 'arquivados' ? '' : 'ghost'} onClick={() => setAba('arquivados')}>Arquivados ({arquivados.length})</button>
+      </div>
+      {shown.length === 0 && <p className="muted">{aba === 'abertos' ? 'Nenhum pedido no momento.' : 'Nenhuma entrega arquivada ainda.'}</p>}
+      {shown.map((o) => (
         <div className="card" key={o.id}>
           <div className="row"><b>#{o.id} · {o.first_name}</b><span className="tag">{o.status}</span></div>
           <p>{o.items}</p>

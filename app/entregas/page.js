@@ -5,10 +5,95 @@ import AlertSettings from '@/components/AlertSettings';
 import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, soundOn, setTitleCount } from '@/lib/alerts';
 
+const BR = 'America/Sao_Paulo';
+const hojeBR = () => new Date().toLocaleDateString('en-CA', { timeZone: BR }); // AAAA-MM-DD
+const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const fmtDia = (iso) => {
+  const d = new Date(iso + 'T12:00:00Z');
+  return `${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][d.getUTCDay()]}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+};
+const hora = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { timeZone: BR, hour: '2-digit', minute: '2-digit' });
+const PERIODOS = [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['7', '7 dias'], ['14', '14 dias'], ['30', '30 dias']];
+function faixa(p) {
+  const h = hojeBR();
+  if (p === 'hoje') return [h, h];
+  if (p === 'ontem') { const o = addDias(h, -1); return [o, o]; }
+  return [addDias(h, -(Number(p) - 1)), h];
+}
+
+function Ganhos() {
+  const [periodo, setPeriodo] = useState('hoje');
+  const [rows, setRows] = useState(null);
+  const [err, setErr] = useState('');
+
+  const load = async () => {
+    const [de, ate] = faixa(periodo);
+    const { data, error } = await supabase.rpc('courier_history', { p_from: de, p_to: ate });
+    if (error) { setErr(error.message); setRows([]); return; }
+    setErr('');
+    setRows(data || []);
+  };
+  useEffect(() => { setRows(null); load(); }, [periodo]);
+  useEffect(() => {
+    const back = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    return () => { document.removeEventListener('visibilitychange', back); window.removeEventListener('focus', back); };
+  }, [periodo]);
+
+  const list = rows || [];
+  const total = list.reduce((t, o) => t + Number(o.courier_pay || 0), 0);
+  const dias = {};
+  list.forEach((o) => { (dias[o.dia] = dias[o.dia] || []).push(o); });
+  const ordem = Object.keys(dias).sort().reverse();
+
+  return (
+    <>
+      <div className="tabs">
+        {PERIODOS.map(([k, nome]) => (
+          <button key={k} className={periodo === k ? '' : 'ghost'} onClick={() => setPeriodo(k)}>{nome}</button>
+        ))}
+      </div>
+      {err && <div className="card"><p className="muted">Não consegui carregar os ganhos. Avise o administrador. ({err})</p></div>}
+      <div className="card">
+        <p className="muted" style={{ margin: 0 }}>Você ganhou</p>
+        <h2 style={{ margin: '2px 0 4px' }}>{brl(total)}</h2>
+        <p className="muted" style={{ margin: 0 }}>
+          {list.length} {list.length === 1 ? 'entrega' : 'entregas'}
+          {list.length > 0 ? ` · média ${brl(total / list.length)} por entrega` : ''}
+          {ordem.length > 1 ? ` · ${ordem.length} dias` : ''}
+        </p>
+      </div>
+      {rows !== null && list.length === 0 && !err && <p className="muted">Nenhuma entrega nesse período.</p>}
+      {ordem.map((d) => {
+        const l = dias[d];
+        const t = l.reduce((x, o) => x + Number(o.courier_pay || 0), 0);
+        return (
+          <details className="card" key={d}>
+            <summary style={{ cursor: 'pointer', listStyle: 'none' }}>
+              <div className="row" style={{ alignItems: 'center' }}>
+                <b>{fmtDia(d)}</b>
+                <span><b>{brl(t)}</b> <span className="muted">· {l.length} {l.length === 1 ? 'entrega' : 'entregas'}</span></span>
+              </div>
+            </summary>
+            <div style={{ marginTop: 8 }}>
+              {l.map((o) => (
+                <p key={o.id} className="muted" style={{ margin: '6px 0' }}>
+                  #{o.id} · {hora(o.delivered_at)} · {o.address} · <b>{brl(o.courier_pay)}</b>
+                </p>
+              ))}
+            </div>
+          </details>
+        );
+      })}
+    </>
+  );
+}
+
 function Entregas() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
-  const [ajustes, setAjustes] = useState(false);
+  const [tab, setTab] = useState('entregas');
   const seen = useRef(null); // ids de pedidos novos já vistos
   const [fresh, setFresh] = useState([]);
   const [aba, setAba] = useState('abertos');
@@ -68,11 +153,19 @@ function Entregas() {
           <button type="button" style={{ marginTop: 8, background: '#fff', color: '#14101f' }} onClick={() => setFresh([])}>Ok, vi</button>
         </div>
       )}
-      <div className="card"><h2>Você recebe hoje: {brl(total)}</h2></div>
-      <div className="row" style={{ margin: '0 0 10px', justifyContent: 'flex-start' }}>
-        <button type="button" className="ghost" onClick={() => setAjustes((v) => !v)}>{ajustes ? 'Fechar ajustes' : 'Ajustes'}</button>
+      <div className="tabs">
+        {['entregas', 'ganhos', 'ajustes'].map((t) => (
+          <button key={t} className={tab === t ? '' : 'ghost'} onClick={() => setTab(t)}>
+            {t}
+            {t === 'entregas' && abertos.some((o) => o.status === 'novo') && <span className="tabdot">{abertos.filter((o) => o.status === 'novo').length}</span>}
+          </button>
+        ))}
       </div>
-      {ajustes && <AlertSettings kind="courier" />}
+      {tab === 'ganhos' && <Ganhos />}
+      {tab === 'ajustes' && <AlertSettings kind="courier" />}
+      {tab === 'entregas' && (
+        <>
+      <div className="card"><h2>Você recebe hoje: {brl(total)}</h2></div>
       <div className="row" style={{ gap: 8, margin: '4px 0 10px', justifyContent: 'flex-start' }}>
         <button type="button" className={aba === 'abertos' ? '' : 'ghost'} onClick={() => setAba('abertos')}>Em aberto ({abertos.length})</button>
         <button type="button" className={aba === 'arquivados' ? '' : 'ghost'} onClick={() => setAba('arquivados')}>Arquivados ({arquivados.length})</button>
@@ -88,6 +181,8 @@ function Entregas() {
           {o.status === 'em_entrega' && <button onClick={() => act('deliver_order', o.id)}>Entreguei</button>}
         </div>
       ))}
+        </>
+      )}
     </>
   );
 }

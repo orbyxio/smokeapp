@@ -19,7 +19,7 @@ export async function POST(request) {
   const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   });
-  const { data: o } = await db.from('orders').select('id,total,payment_method,address').eq('id', id).single();
+  const { data: o } = await db.from('orders').select('id,total,payment_method,address,order_items(item_label,qty)').eq('id', id).single();
   if (!o) return new Response('sem pedido', { status: 404 });
   const { data: subs } = await db.from('push_subscriptions').select('*');
 
@@ -30,8 +30,12 @@ export async function POST(request) {
   );
 
   const pay = PAY[o.payment_method] || 'Pedido';
+  const its = o.order_items || [];
+  const first = its[0] ? `${its[0].qty}x ${its[0].item_label}` : '';
+  const prod = first ? first + (its.length > 1 ? ` +${its.length - 1}` : '') : '';
+  const titulo = prod ? `Pedido novo - ${prod}` : 'Pedido novo';
   const msg = {
-    admin: { title: 'Pedido novo', body: `${pay}: ${brl(o.total)}`, tag: `p${o.id}`, url: '/admin' },
+    admin: { title: titulo, body: `${pay}: ${brl(o.total)}`, tag: `p${o.id}`, url: '/admin' },
     courier: { title: 'Entrega nova', body: o.address || `${pay}: ${brl(o.total)}`, tag: `p${o.id}`, url: '/entregas' },
   };
 

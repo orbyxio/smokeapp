@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
+import PushButton from '@/components/PushButton';
 import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
@@ -75,6 +76,7 @@ function Entregas() {
           <button type="button" className={som ? '' : 'ghost'} onClick={toggleSom}>{som ? 'Som ligado' : 'Ativar som'}</button>
         </div>
         {!som && <p className="muted" style={{ margin: '6px 0 0' }}>Toque em Ativar som para tocar um aviso quando chegar entrega. Deixe esta tela aberta.</p>}
+        <PushButton kind="courier" />
       </div>
       {rows.length === 0 && <p className="muted">Nenhum pedido no momento.</p>}
       {rows.map((o) => (

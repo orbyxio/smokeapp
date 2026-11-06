@@ -2,13 +2,14 @@
 import { useEffect, useRef, useState } from 'react';
 import Auth from '@/components/Auth';
 import { supabase, brl } from '@/lib/supabase';
-import { alertNewOrder, setSound, soundOn, setTitleCount } from '@/lib/alerts';
+import { alertNewOrder, armAudio, keepAwake, setSound, soundOn, setTitleCount } from '@/lib/alerts';
 
 function Entregas() {
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(0);
   const [som, setSom] = useState(false);
   const seen = useRef(null); // ids de pedidos novos já vistos
+  const [fresh, setFresh] = useState([]);
 
   const load = async () => {
     const a = await supabase.rpc('courier_orders');
@@ -18,16 +19,35 @@ function Entregas() {
     setTotal(b.data || 0);
 
     const novos = list.filter((o) => o.status === 'novo').map((o) => o.id);
-    if (seen.current !== null && novos.some((id) => !seen.current.has(id))) alertNewOrder();
+    if (seen.current !== null) {
+      const ids = novos.filter((id) => !seen.current.has(id));
+      if (ids.length) {
+        alertNewOrder();
+        setFresh((f) => [...list.filter((o) => ids.includes(o.id)).map((o) => ({ id: o.id, address: o.address })), ...f].slice(0, 5));
+      }
+    }
     seen.current = new Set([...(seen.current || []), ...novos]);
     setTitleCount(novos.length, 'Entregas');
   };
 
   useEffect(() => {
-    setSom(soundOn());
+    const on = soundOn();
+    setSom(on);
+    armAudio();
+    keepAwake(on);
     load();
     const t = setInterval(load, 15000);
-    return () => clearInterval(t);
+    // ao voltar para o app, confere na hora
+    const back = () => { if (!document.hidden) load(); };
+    document.addEventListener('visibilitychange', back);
+    window.addEventListener('focus', back);
+    window.addEventListener('pageshow', back);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener('visibilitychange', back);
+      window.removeEventListener('focus', back);
+      window.removeEventListener('pageshow', back);
+    };
   }, []);
 
   const act = async (fn, id) => { const { error } = await supabase.rpc(fn, { p_id: id }); if (error) alert(error.message); load(); };
@@ -35,11 +55,19 @@ function Entregas() {
     const on = !som;
     setSound(on);
     setSom(on);
+    keepAwake(on);
     if (on) alertNewOrder();
   }
 
   return (
     <>
+      {fresh.length > 0 && (
+        <div className="card" role="alert" style={{ background: '#14101f', color: '#fff' }}>
+          <b style={{ fontSize: 17 }}>Entrega nova</b>
+          {fresh.map((n) => <p key={n.id} style={{ margin: '4px 0', color: '#fff' }}>#{n.id} · {n.address}</p>)}
+          <button type="button" style={{ marginTop: 8, background: '#fff', color: '#14101f' }} onClick={() => setFresh([])}>Ok, vi</button>
+        </div>
+      )}
       <div className="card"><h2>Você recebe hoje: {brl(total)}</h2></div>
       <div className="card">
         <div className="row" style={{ alignItems: 'center' }}>

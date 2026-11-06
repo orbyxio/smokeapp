@@ -277,6 +277,7 @@ a.btn.ghost {
   white-space: nowrap;
 }
 .av {
+  position: relative;
   flex: none;
   display: grid;
   place-items: center;
@@ -291,14 +292,18 @@ a.btn.ghost {
 }
 
 .av img {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
   height: 100%;
   border-radius: inherit;
   object-fit: cover;
 }
+.bar .avbtn,
 .avbtn {
   position: relative;
+  box-sizing: border-box;
   width: 38px;
   min-height: 38px;
   height: 38px;

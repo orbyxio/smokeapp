@@ -193,21 +193,44 @@ const lab = { display: 'block', margin: '10px 0 4px', fontSize: 13, fontWeight: 
 // Quantidade de um sabor/variação
 function VariantRow({ v, reload }) {
   const [val, setVal] = useState(v.stock);
+  const [pr, setPr] = useState(Number(v.price || 0).toFixed(2).replace('.', ','));
+  const [busy, setBusy] = useState(false);
   async function save() {
-    const diff = Number(val) - v.stock;
-    if (!diff) return;
-    await supabase.from('variants').update({ stock: Number(val) }).eq('id', v.id);
-    await supabase.from('stock_movements').insert({ variant_id: v.id, qty_change: diff, reason: 'ajuste' });
+    const preco = Number(String(pr).replace(',', '.'));
+    if (!Number.isFinite(preco) || preco <= 0) return alert('Digite um preço válido, maior que zero.');
+    const estoque = Number(val);
+    if (!Number.isFinite(estoque) || estoque < 0) return alert('Digite uma quantidade válida.');
+    const diff = estoque - v.stock;
+    const mudouPreco = preco !== Number(v.price);
+    if (!diff && !mudouPreco) return;
+    setBusy(true);
+    const patch = {};
+    if (mudouPreco) patch.price = preco;
+    if (diff) patch.stock = estoque;
+    const { error } = await supabase.from('variants').update(patch).eq('id', v.id);
+    if (error) { setBusy(false); return alert('Não consegui salvar: ' + error.message); }
+    if (diff) await supabase.from('stock_movements').insert({ variant_id: v.id, qty_change: diff, reason: 'ajuste' });
+    setBusy(false);
     reload();
   }
+  const mini = { fontSize: 12 };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 0', ...line }}>
-      <span style={{ minWidth: 0 }}><b>{v.label}</b><br /><span className="muted">{brl(v.price)}</span>{v.stock <= LOW && <span className="tag" style={{ marginLeft: 6 }}>{v.stock <= 0 ? 'Zerado' : 'Baixo'}</span>}</span>
-      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <input type="number" min="0" value={val} aria-label={`Estoque de ${v.label}`}
-          onChange={(e) => setVal(e.target.value)} style={{ width: 84 }} />
-        <button type="button" onClick={save}>Salvar</button>
-      </span>
+    <div style={{ padding: '10px 0', ...line }}>
+      <b>{v.label}</b>
+      {v.stock <= LOW && <span className="tag" style={{ marginLeft: 6 }}>{v.stock <= 0 ? 'Zerado' : 'Baixo'}</span>}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginTop: 6 }}>
+        <label style={{ flex: 1, minWidth: 0 }}>
+          <span className="muted" style={mini}>Preço (R$)</span>
+          <input type="text" inputMode="decimal" placeholder="0,00" value={pr} aria-label={`Preço de ${v.label}`}
+            onChange={(e) => setPr(e.target.value)} />
+        </label>
+        <label style={{ flex: 1, minWidth: 0 }}>
+          <span className="muted" style={mini}>Estoque</span>
+          <input type="number" inputMode="numeric" min="0" value={val} aria-label={`Estoque de ${v.label}`}
+            onChange={(e) => setVal(e.target.value)} />
+        </label>
+        <button type="button" disabled={busy} onClick={save}>{busy ? '...' : 'Salvar'}</button>
+      </div>
     </div>
   );
 }
@@ -215,6 +238,7 @@ function VariantRow({ v, reload }) {
 // Um cartão completo por produto
 function ProductCard({ p, reload }) {
   const [brand, setBrand] = useState(p.brand || '');
+  const [nome, setNome] = useState(p.name || '');
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [nv, setNv] = useState({ label: '', price: '', stock: '' });
@@ -243,6 +267,14 @@ function ProductCard({ p, reload }) {
     const { error } = await supabase.from('products').update({ image_url: null }).eq('id', p.id);
     if (error) alert(error.message);
     setBusy(false);
+    reload();
+  }
+  async function saveName() {
+    const n = nome.trim();
+    if (!n) { setNome(p.name || ''); return alert('O nome do produto não pode ficar vazio.'); }
+    if (n === p.name) return;
+    const { error } = await supabase.from('products').update({ name: n }).eq('id', p.id);
+    if (error) alert(error.message);
     reload();
   }
   async function saveBrand() {
@@ -314,14 +346,17 @@ function ProductCard({ p, reload }) {
       </div>
       <input ref={pick} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
 
+      <span style={lab}>Nome do produto</span>
+      <input value={nome} onChange={(e) => setNome(e.target.value)} onBlur={saveName} />
+
       <span style={lab}>Marca</span>
       <input list="marcas" placeholder="Ex.: Ignite" value={brand}
         onChange={(e) => setBrand(e.target.value)} onBlur={saveBrand} />
 
       <span style={lab}>Sabores e estoque</span>
-      <p className="muted" style={help}>Mude a quantidade e toque em Salvar.</p>
+      <p className="muted" style={help}>Mude o preço ou a quantidade e toque em Salvar. O preço novo vale na loja na hora.</p>
       {vars.length === 0 && <p className="muted">Nenhum sabor cadastrado.</p>}
-      {vars.map((v) => <VariantRow key={v.id + ':' + v.stock} v={v} reload={reload} />)}
+      {vars.map((v) => <VariantRow key={v.id + ':' + v.stock + ':' + v.price} v={v} reload={reload} />)}
 
       {adding ? (
         <form onSubmit={addVariant} style={{ ...line, paddingTop: 10 }}>

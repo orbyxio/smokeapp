@@ -6,6 +6,12 @@ import { supabase, brl } from '@/lib/supabase';
 import { alertNewOrder, armAudio, keepAwake, soundOn, setTitleCount } from '@/lib/alerts';
 
 const BR = 'America/Sao_Paulo';
+const waLink = (phone, nome) => {
+  let d = String(phone || '').replace(/\D/g, '');
+  if (d.length === 10 || d.length === 11) d = '55' + d;
+  const msg = `Olá${nome ? ', ' + nome : ''}! Sou o entregador do seu pedido e acabei de chegar no endereço. Pode vir receber?`;
+  return `https://wa.me/${d}?text=${encodeURIComponent(msg)}`;
+};
 const hojeBR = () => new Date().toLocaleDateString('en-CA', { timeZone: BR }); // AAAA-MM-DD
 const addDias = (iso, n) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const fmtDia = (iso) => {
@@ -97,6 +103,7 @@ function Entregas() {
   const seen = useRef(null); // ids de pedidos novos já vistos
   const [fresh, setFresh] = useState([]);
   const [aba, setAba] = useState('abertos');
+  const [chegou, setChegou] = useState({});
 
   const load = async () => {
     const a = await supabase.rpc('courier_orders');
@@ -179,6 +186,12 @@ function Entregas() {
           <p><b>Pagamento: {({ pix: 'Pix', card: 'Cartão', cash: 'Dinheiro' })[o.payment_method] || o.payment_method}</b></p>
           <p className="muted">Você ganha {brl(o.courier_pay)}</p>
           {o.status === 'novo' && <button onClick={() => act('take_order', o.id)}>Peguei</button>}
+          {o.status === 'em_entrega' && !chegou[o.id] && <button type="button" className="ghost" style={{ marginBottom: 8 }} onClick={() => setChegou((c) => ({ ...c, [o.id]: true }))}>Cheguei</button>}
+          {o.status === 'em_entrega' && chegou[o.id] && o.customer_phone && (
+            <a href={waLink(o.customer_phone, o.first_name)} target="_blank" rel="noreferrer" style={{ display: 'block', marginBottom: 8 }}>
+              <button type="button" style={{ width: '100%' }}>Avisar cliente no WhatsApp</button>
+            </a>
+          )}
           {o.status === 'em_entrega' && <button onClick={() => act('deliver_order', o.id)}>Entreguei</button>}
         </div>
       ))}

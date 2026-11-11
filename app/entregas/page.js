@@ -176,6 +176,7 @@ function Entregas() {
           <div className="row"><b>#{o.id} · {o.first_name}</b><span className="tag">{o.status}</span></div>
           <p>{o.items}</p>
           <p><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.address)}`} target="_blank" rel="noreferrer">{o.address}</a></p>
+          <p><b>Pagamento: {({ pix: 'Pix', card: 'Cartão', cash: 'Dinheiro' })[o.payment_method] || o.payment_method}</b></p>
           <p className="muted">Você ganha {brl(o.courier_pay)}</p>
           {o.status === 'novo' && <button onClick={() => act('take_order', o.id)}>Peguei</button>}
           {o.status === 'em_entrega' && <button onClick={() => act('deliver_order', o.id)}>Entreguei</button>}
